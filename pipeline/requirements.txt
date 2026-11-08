@@ -1,0 +1,6 @@
+numpy>=1.26,<2.2
+scikit-learn>=1.4
+sentence-transformers>=3.0
+umap-learn>=0.5.6
+hdbscan>=0.8.36
+hnswlib>=0.8.0
