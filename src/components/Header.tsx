@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react'
-import { ERA_OPTIONS, useAtlas } from '../store/atlas'
+import { useEffect, useRef, useState } from 'react'
+import { useAtlas } from '../store/atlas'
 import { atlas } from '../workers/atlasClient'
+import BlurText from './bits/BlurText'
+import CountUp from './bits/CountUp'
 
 export default function Header() {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -12,15 +14,18 @@ export default function Header() {
   const searchIndexed = useAtlas((state) => state.searchIndexed)
   const count = useAtlas((state) => state.count)
   const genres = useAtlas((state) => state.genres)
-  const activeGenres = useAtlas((state) => state.activeGenres)
-  const era = useAtlas((state) => state.era)
   const selectedId = useAtlas((state) => state.selectedId)
-  const toggleGenre = useAtlas((state) => state.toggleGenre)
-  const setEra = useAtlas((state) => state.setEra)
-  const resetFilters = useAtlas((state) => state.resetFilters)
   const select = useAtlas((state) => state.select)
   const focusBook = useAtlas((state) => state.focusBook)
-  const filterActive = activeGenres.length > 0 || era !== 'all' || query.trim().length > 0
+  const autoRotate = useAtlas((state) => state.autoRotate)
+  const showLabels = useAtlas((state) => state.showLabels)
+  const showLinks = useAtlas((state) => state.showLinks)
+  const toggleAutoRotate = useAtlas((state) => state.toggleAutoRotate)
+  const toggleLabels = useAtlas((state) => state.toggleLabels)
+  const toggleLinks = useAtlas((state) => state.toggleLinks)
+
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsRef = useRef<HTMLDivElement>(null)
   const showResults = query.trim().length > 0
 
   useEffect(() => {
@@ -58,191 +63,199 @@ export default function Header() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const topResults = results.slice(0, 7)
+  useEffect(() => {
+    if (!settingsOpen) return
+    const onDown = (event: MouseEvent) => {
+      if (!settingsRef.current?.contains(event.target as Node)) setSettingsOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [settingsOpen])
 
   return (
-    <header className="pointer-events-none absolute inset-x-3 top-3 z-30 flex flex-col gap-2.5 sm:inset-x-4 sm:top-4">
-      <div className="flex items-center gap-2.5 sm:gap-3.5">
-        <div className="clay pointer-events-auto flex min-w-0 items-center gap-2.5 rounded-full py-2 pl-2 pr-3.5 sm:gap-3 sm:pr-5">
-          <BrandMark />
-          <div className="min-w-0">
-            <h1 className="truncate font-serif text-[15px] leading-none tracking-[-0.01em] text-ink sm:text-[18px]">
-              Book Similarity Machine
-            </h1>
-            <p className="mt-1 hidden text-[9px] uppercase tracking-[0.18em] text-soft sm:block">
-              a clay atlas of reading
-            </p>
-          </div>
+    <header className="app-header card header-inner">
+      <div className="brand">
+        <BrandMark />
+        <div className="min-w-0">
+          <h1 className="brand-title truncate font-serif text-[18px] leading-none tracking-[-0.01em] text-ink">
+            <BlurText text="Book Similarity Machine" />
+          </h1>
+          <p className="brand-sub mt-1 text-[9px] uppercase tracking-[0.18em] text-soft">
+            a clay atlas of reading
+          </p>
+        </div>
+      </div>
+
+      <div className="search-wrap">
+        <label htmlFor="atlas-search" className="sr-only">
+          Search books, authors or subjects
+        </label>
+        <div className="search-field clay-inset">
+          <svg
+            viewBox="0 0 24 24"
+            className="search-icon h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.9"
+            aria-hidden
+          >
+            <circle cx="10.8" cy="10.8" r="6.3" />
+            <path d="m15.5 15.5 4 4" strokeLinecap="round" />
+          </svg>
+          <input
+            ref={inputRef}
+            id="atlas-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search books, authors, moods…"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {query ? (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                setQuery('')
+                inputRef.current?.focus()
+              }}
+              className="grid h-7 w-7 place-items-center rounded-full text-soft hover:text-ink"
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="m6 6 12 12M18 6 6 18" strokeLinecap="round" />
+              </svg>
+            </button>
+          ) : (
+            <span className="search-kbd" aria-hidden>
+              /
+            </span>
+          )}
         </div>
 
-        <div className="pointer-events-auto relative min-w-0 flex-1 sm:max-w-[420px]">
-          <label htmlFor="atlas-search" className="sr-only">
-            Search books, authors or subjects
-          </label>
-          <div className="clay-inset relative flex h-11 items-center rounded-full">
-            <svg
-              viewBox="0 0 24 24"
-              className="pointer-events-none absolute left-4 h-4 w-4 text-soft"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.9"
-            >
-              <circle cx="10.8" cy="10.8" r="6.3" />
-              <path d="m15.5 15.5 4 4" strokeLinecap="round" />
-            </svg>
-            <input
-              ref={inputRef}
-              id="atlas-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search books, authors, moods…"
-              autoComplete="off"
-              spellCheck={false}
-              className="h-full w-full rounded-full bg-transparent pl-11 pr-10 text-[13px] text-ink placeholder:text-soft/70 focus:outline-none"
-            />
-            {query ? (
-              <button
-                type="button"
-                aria-label="Clear search"
-                onClick={() => {
-                  setQuery('')
-                  inputRef.current?.focus()
-                }}
-                className="absolute right-2.5 grid h-7 w-7 place-items-center rounded-full text-soft transition-colors hover:text-ink"
-              >
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="m6 6 12 12M18 6 6 18" strokeLinecap="round" />
-                </svg>
-              </button>
-            ) : (
-              <span className="pointer-events-none absolute right-3.5 hidden rounded-md border border-[#d9dfe8] px-1.5 py-0.5 text-[10px] text-soft sm:block">
-                /
-              </span>
-            )}
-          </div>
-
-          {showResults ? (
-            <div className="clay absolute left-0 right-0 top-[calc(100%+10px)] z-40 rounded-[22px] p-2">
-              {topResults.length ? (
-                <ul className="thin-scrollbar max-h-[46vh] overflow-y-auto">
-                  {topResults.map((id) => {
-                    const book = meta[id]
-                    return (
-                      <li key={id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            select(id)
-                            focusBook(id)
-                            inputRef.current?.blur()
-                          }}
-                          className={`flex w-full items-center gap-2 rounded-2xl px-2.5 py-2 text-left transition-colors hover:bg-white/45 ${
-                            id === selectedId ? 'bg-white/40' : ''
-                          }`}
-                        >
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{
-                              background:
-                                genres[book?.g ?? 0]?.color ?? '#c9d1dd',
-                              boxShadow: 'inset 1px 1px 2px rgba(255,255,255,.8)',
-                            }}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] text-ink">
-                              {book?.t ?? `Book #${id}`}
-                            </span>
-                            <span className="block truncate text-[11px] text-soft">
-                              {book ? `${book.a} · ${book.y}` : 'loading metadata…'}
-                            </span>
+        {showResults ? (
+          <div className="search-pop card thin-scrollbar">
+            {results.length ? (
+              <ul className="space-y-0.5">
+                {results.slice(0, 7).map((id) => {
+                  const book = meta[id]
+                  return (
+                    <li key={id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          select(id)
+                          focusBook(id)
+                          inputRef.current?.blur()
+                        }}
+                        className={`result-row ${id === selectedId ? 'clay-inset' : ''}`}
+                      >
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ background: genres[book?.g ?? 0]?.color ?? '#c9d1dd' }}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12.5px] text-ink">
+                            {book?.t ?? `Book #${id}`}
                           </span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              ) : (
-                <p className="px-3 py-4 text-[12px] text-soft">
-                  {searchIndexed < count && count > 0
-                    ? `Indexing ${searchIndexed.toLocaleString()} of ${count.toLocaleString()} books…`
-                    : 'No books match that search.'}
-                </p>
-              )}
-              <p className="px-3 pb-1 pt-1.5 text-[10px] uppercase tracking-[0.16em] text-soft/80">
-                {results.length.toLocaleString()} matches · others fade on the globe
+                          <span className="block truncate text-[10.5px] text-soft">
+                            {book ? `${book.a} · ${book.y}` : 'loading metadata…'}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className="px-3 py-4 text-[12px] text-soft">
+                {searchIndexed < count && count > 0
+                  ? `Indexing ${searchIndexed.toLocaleString()} of ${count.toLocaleString()} books…`
+                  : 'No books match that search.'}
               </p>
+            )}
+            <p className="px-3 pb-1 pt-1.5 text-[9px] uppercase tracking-[0.16em] text-soft">
+              {results.length.toLocaleString()} matches
+            </p>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="header-right">
+        <div className="count-chip clay-sm">
+          <span className="font-serif text-[16px] leading-none text-ink">
+            <CountUp value={count} />
+          </span>
+          <span className="hidden sm:inline">books</span>
+        </div>
+
+        <div className="settings-wrap" ref={settingsRef}>
+          <button
+            type="button"
+            aria-label="Globe settings"
+            aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen((open) => !open)}
+            className={`grid h-10 w-10 place-items-center rounded-full text-soft ${
+              settingsOpen ? 'clay-inset' : 'clay-sm'
+            }`}
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <circle cx="12" cy="12" r="3.1" />
+              <path d="M12 3.6v2M12 18.4v2M3.6 12h2M18.4 12h2M6.1 6.1l1.4 1.4M16.5 16.5l1.4 1.4M6.1 17.9l1.4-1.4M16.5 7.5l1.4-1.4" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          {settingsOpen ? (
+            <div className="settings-pop card">
+              <p className="eyebrow px-2 pb-1">View</p>
+              <ToggleRow label="Rotate slowly" value={autoRotate} onChange={toggleAutoRotate} />
+              <ToggleRow label="Labels" value={showLabels} onChange={toggleLabels} />
+              <ToggleRow label="Threads" value={showLinks} onChange={toggleLinks} />
             </div>
           ) : null}
         </div>
-
-        <div className="clay pointer-events-auto hidden shrink-0 rounded-full px-4 py-2.5 text-center text-[11px] leading-tight text-soft lg:block">
-          <span className="block font-serif text-[17px] leading-none text-ink">
-            {count.toLocaleString()}
-          </span>
-          books
-        </div>
-      </div>
-
-      <div className="clay pointer-events-auto flex items-center gap-1.5 overflow-x-auto rounded-full px-2 py-1.5 no-scrollbar sm:gap-2 sm:px-2.5">
-        {genres.map((genre, index) => {
-          const active = activeGenres.includes(index)
-          return (
-            <button
-              key={genre.id}
-              type="button"
-              onClick={() => toggleGenre(index)}
-              aria-pressed={active}
-              className={`flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[11px] transition-colors ${
-                active ? 'clay-inset-sm text-[#4a3fa8]' : 'clay-sm text-ink hover:text-[#4a3fa8]'
-              }`}
-            >
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{
-                  background: genre.color,
-                  boxShadow: 'inset 1px 1px 2px rgba(255,255,255,.85)',
-                }}
-              />
-              <span className="hidden sm:inline">{genre.name}</span>
-              <span className="sm:hidden">{genre.name.split(' ')[0]}</span>
-            </button>
-          )
-        })}
-
-        <span className="mx-1 h-4 w-px shrink-0 bg-[#d7dde6]" />
-
-        {ERA_OPTIONS.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            onClick={() => setEra(option.id)}
-            aria-pressed={era === option.id}
-            className={`h-7 shrink-0 rounded-full px-2.5 text-[11px] transition-colors ${
-              era === option.id ? 'clay-inset-sm text-[#4a3fa8]' : 'text-soft hover:text-ink'
-            }`}
-          >
-            {option.label}
-          </button>
-        ))}
-
-        {filterActive ? (
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="ml-auto h-7 shrink-0 rounded-full px-2.5 text-[11px] text-soft underline decoration-[#c8d0dc] underline-offset-2 hover:text-ink"
-          >
-            Reset
-          </button>
-        ) : null}
       </div>
     </header>
+  )
+}
+
+function ToggleRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: boolean
+  onChange: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={value}
+      onClick={onChange}
+      className="settings-row"
+    >
+      <span>{label}</span>
+      <span
+        aria-hidden
+        className={`relative h-4 w-7 rounded-full transition-colors ${
+          value ? 'bg-[#b9aef0]' : 'bg-[#cfd6e0]'
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+            value ? 'translate-x-3.5' : 'translate-x-0.5'
+          }`}
+        />
+      </span>
+    </button>
   )
 }
 
 function BrandMark() {
   return (
     <span
-      className="grid h-9 w-9 shrink-0 place-items-center rounded-full sm:h-10 sm:w-10"
+      className="grid h-10 w-10 shrink-0 place-items-center rounded-full"
       style={{
         background: 'radial-gradient(circle at 34% 28%, #ffffff 0%, #e6eaf1 55%, #c9d0db 100%)',
         boxShadow:
