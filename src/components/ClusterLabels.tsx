@@ -1,67 +1,200 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Html } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SPHERE_RADIUS } from '../data/format'
 import type { Cluster } from '../data/types'
+import { genreTint } from '../lib/theme'
+import { atlasView } from '../lib/view'
 import { useAtlas } from '../store/atlas'
 
-/** Continent names in letterpress, faded out as they rotate to the far side. */
-export default function ClusterLabels() {
-  const clusters = useAtlas((state) => state.clusters)
-  if (!clusters.length) return null
-  return (
-    <>
-      {clusters.map((cluster) => (
-        <ClusterLabel key={cluster.id} cluster={cluster} />
-      ))}
-    </>
-  )
+interface LabelDatum {
+  key: string
+  name: string
+  normal: THREE.Vector3
+  count: number
+  genre: number
+  color: string
 }
 
-function ClusterLabel({ cluster }: { cluster: Cluster }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const selectedGenreCount = useAtlas((state) => {
-    if (!state.activeGenres.length) return 0
-    return state.activeGenres.includes(cluster.genre) ? 1 : -1
+const LABEL_RADIUS = SPHERE_RADIUS * 1.002
+
+/**
+ * Letterpress continent labels. Projection, horizon fading and screen-box
+ * collision culling all happen in the render loop (never in React state), so
+ * labels stay readable and never spill past the globe's silhouette.
+ */
+export default function ClusterLabels() {
+  const clusters = useAtlas((state) => state.clusters)
+  const genres = useAtlas((state) => state.genres)
+  const showLabels = useAtlas((state) => state.showLabels)
+  const activeGenres = useAtlas((state) => state.activeGenres)
+
+  const [tier, setTier] = useState<'genre' | 'cluster'>('genre')
+  const tierRef = useRef<'genre' | 'cluster'>('genre')
+  const nodes = useRef(new Map<string, HTMLDivElement>())
+  const camera = useThree((state) => state.camera)
+  const size = useThree((state) => state.size)
+  const invalidate = useThree((state) => state.invalidate)
+
+  // Zoomed out: one label per genre. Zoomed in: the finer continents.
+  useFrame(() => {
+    const zoom = atlasView.zoom
+    const next: 'genre' | 'cluster' =
+      tierRef.current === 'genre' ? (zoom > 1.24 ? 'cluster' : 'genre') : zoom < 1.06 ? 'genre' : 'cluster'
+    if (next !== tierRef.current) {
+      tierRef.current = next
+      setTier(next)
+    }
   })
 
-  const unit = useMemo(
-    () => new THREE.Vector3(...cluster.centroid).normalize(),
-    [cluster.centroid],
-  )
+  const labels = useMemo<LabelDatum[]>(() => {
+    if (!clusters.length) return []
 
-  const position = useMemo<[number, number, number]>(
-    () => [unit.x * SPHERE_RADIUS * 1.035, unit.y * SPHERE_RADIUS * 1.035, unit.z * SPHERE_RADIUS * 1.035],
-    [unit],
-  )
+    if (tier === 'genre') {
+      const seen = new Set<number>()
+      const out: LabelDatum[] = []
+      for (const genre of genres) {
+        const index = genres.findIndex((item) => item.id === genre.id)
+        const members = clusters.filter((cluster) => cluster.genre === index)
+        if (!members.length || seen.has(index)) continue
+        seen.add(index)
+        const normal = new THREE.Vector3()
+        let count = 0
+        for (const member of members) {
+          normal.add(new THREE.Vector3(...member.centroid).normalize().multiplyScalar(member.count))
+          count += member.count
+        }
+        if (normal.lengthSq() === 0) continue
+        out.push({
+          key: `genre-${index}`,
+          name: genre.name,
+          normal: normal.normalize(),
+          count,
+          genre: index,
+          color: genreTint(index),
+        })
+      }
+      return out
+    }
 
-  useFrame(({ camera }) => {
-    const element = ref.current
-    if (!element) return
-    const facing = unit.dot(camera.position.clone().normalize())
-    const visible = facing > 0.26
-    const strength = visible ? Math.min(1, (facing - 0.26) * 3.4) : 0
-    const dimmed = selectedGenreCount === -1 ? 0.28 : 1
-    element.style.opacity = `${strength * dimmed}`
-    element.style.transform = `scale(${camera.position.length() > 5.4 ? 0.92 : 1})`
+    return clusters.map((cluster: Cluster) => ({
+      key: `cluster-${cluster.id}`,
+      name: cluster.name,
+      normal: new THREE.Vector3(...cluster.centroid).normalize(),
+      count: cluster.count,
+      genre: cluster.genre,
+      color: cluster.color || genreTint(cluster.genre),
+    }))
+  }, [clusters, genres, tier])
+
+  const projected = useRef(new THREE.Vector3())
+  const cameraDir = useRef(new THREE.Vector3())
+  const active = useRef(activeGenres.length)
+  active.current = activeGenres.length
+
+  useFrame(() => {
+    if (!showLabels) return
+    camera.getWorldDirection(cameraDir.current)
+    cameraDir.current.negate()
+    const boxes: { x: number; y: number; w: number; h: number }[] = []
+    const ordered = [...labels].sort((a, b) => b.count - a.count)
+
+    for (const label of ordered) {
+      const element = nodes.current.get(label.key)
+      if (!element) continue
+
+      const facing = label.normal.dot(cameraDir.current)
+      if (facing < 0.25) {
+        element.style.opacity = '0'
+        element.style.visibility = 'hidden'
+        continue
+      }
+
+      projected.current.copy(label.normal).multiplyScalar(LABEL_RADIUS).project(camera)
+      const rawX = (projected.current.x * 0.5 + 0.5) * size.width
+      const rawY = (-projected.current.y * 0.5 + 0.5) * size.height
+      if (projected.current.z > 1) {
+        element.style.opacity = '0'
+        element.style.visibility = 'hidden'
+        continue
+      }
+
+      const width = element.offsetWidth || 90
+      const height = element.offsetHeight || 16
+      // Ease rim labels inward instead of dropping them at the silhouette.
+      const x = Math.min(Math.max(rawX, width / 2 + 8), size.width - width / 2 - 8)
+      const y = Math.min(Math.max(rawY, height / 2 + 8), size.height - height / 2 - 8)
+      const box = { x: x - width / 2, y: y - height / 2, w: width, h: height }
+      // Never let a label spill past the stage edge.
+      if (
+        box.x < 6 ||
+        box.y < 6 ||
+        box.x + box.w > size.width - 6 ||
+        box.y + box.h > size.height - 6
+      ) {
+        element.style.opacity = '0'
+        element.style.visibility = 'hidden'
+        continue
+      }
+      const collision = boxes.some(
+        (other) =>
+          box.x < other.x + other.w + 8 &&
+          box.x + box.w + 8 > other.x &&
+          box.y < other.y + other.h + 6 &&
+          box.y + box.h + 6 > other.y,
+      )
+      const dimmed =
+        active.current > 0 && !activeGenres.includes(label.genre) ? 0.24 : 1
+      const fade = Math.min(1, (facing - 0.25) * 4)
+
+      if (collision) {
+        element.style.opacity = '0'
+        element.style.visibility = 'hidden'
+        continue
+      }
+
+      boxes.push(box)
+      element.style.visibility = 'visible'
+      element.style.opacity = `${fade * dimmed}`
+      // Actually move the label when it was eased inward from the rim.
+      element.style.transform = `translate(${Math.round(x - rawX)}px, ${Math.round(y - rawY)}px)`
+    }
   })
+
+  useEffect(() => {
+    invalidate()
+  }, [showLabels, labels, invalidate])
+
+  if (!showLabels || !labels.length) return null
 
   return (
-    <Html
-      position={position}
-      center
-      zIndexRange={[14, 0]}
-      style={{ pointerEvents: 'none' }}
-      wrapperClass="pointer-events-none"
-    >
-      <div
-        ref={ref}
-        className="letterpress select-none whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.22em] transition-opacity duration-150"
-        style={{ textShadow: '0 1px 0 rgba(255,255,255,0.9), 0 -1px 0 rgba(96,108,126,0.22)' }}
-      >
-        {cluster.name}
-      </div>
-    </Html>
+    <>
+      {labels.map((label) => (
+        <Html
+          key={label.key}
+          position={[
+            label.normal.x * LABEL_RADIUS,
+            label.normal.y * LABEL_RADIUS,
+            label.normal.z * LABEL_RADIUS,
+          ]}
+          center
+          zIndexRange={[12, 0]}
+          style={{ pointerEvents: 'none' }}
+          wrapperClass="pointer-events-none"
+        >
+          <div
+            ref={(element) => {
+              if (element) nodes.current.set(label.key, element)
+              else nodes.current.delete(label.key)
+            }}
+            className="atlas-label"
+            style={{ opacity: 0 }}
+          >
+            {label.name}
+          </div>
+        </Html>
+      ))}
+    </>
   )
 }
