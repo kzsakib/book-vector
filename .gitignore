@@ -1,0 +1,20 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+.vercel/
+
+# Generated sample dataset — rebuilt by `npm run data:sample` (predev/prebuild)
+public/data/*.bin
+public/data/*.json
+
+# Offline pipeline artifacts
+pipeline/.cache/
+pipeline/out/
+pipeline/books.sqlite
+*.npy
+*.pyc
+__pycache__/
+.venv/
+venv/
