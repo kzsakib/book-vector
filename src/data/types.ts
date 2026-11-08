@@ -60,7 +60,8 @@ export type Era = 'all' | 'pre1900' | '1900s' | '1960s' | '2000s'
 
 export interface Focus {
   dir: [number, number, number]
-  distance: number
+  /** Camera distance as a fraction of the framed distance (1 = framed). */
+  zoom: number
   /** Changes on every request so identical directions still animate. */
   nonce: number
 }

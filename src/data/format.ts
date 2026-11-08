@@ -3,16 +3,19 @@ import type { PackedAttrs } from './types'
 /** World-space radius of the clay globe. Positions are stored as unit vectors. */
 export const SPHERE_RADIUS = 2
 
-/** Bump footprints (world units) interpolated by popularity. */
+/**
+ * Bump footprints interpolated by popularity. With a globe radius of 2 these are
+ * 1.0%–1.6% of the radius, so 2,000 bumps read as clay speckle rather than dust.
+ */
 export const BUMP = {
-  minRadius: 0.0115,
-  maxRadius: 0.0295,
-  minHeight: 0.006,
-  maxHeight: 0.021,
+  minRadius: SPHERE_RADIUS * 0.01,
+  maxRadius: SPHERE_RADIUS * 0.016,
+  minHeight: SPHERE_RADIUS * 0.0056,
+  maxHeight: SPHERE_RADIUS * 0.0092,
 } as const
 
-/** Alpha used for bumps excluded by search or filters (0-255). */
-export const DIM_ALPHA = 26
+/** Visibility (0-255) for bumps excluded by search or filters. */
+export const DIM_ALPHA = 54
 
 export function decodePositions(buffer: ArrayBuffer, count: number): Float32Array {
   const view = new Uint16Array(buffer)
