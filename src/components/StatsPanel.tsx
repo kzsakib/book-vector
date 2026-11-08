@@ -1,71 +1,90 @@
-import { useAtlas } from '../store/atlas'
+import { useMemo } from 'react'
+import { ERA_OPTIONS, useAtlas } from '../store/atlas'
+import AnimatedContent from './bits/AnimatedContent'
+import CountUp from './bits/CountUp'
+import GooeyNav from './bits/GooeyNav'
 
-/** Floating stats card, top-left. */
+/** Left rail: one Genres card (multi-select) and one Decade control. */
 export default function StatsPanel() {
+  const genres = useAtlas((state) => state.genres)
+  const points = useAtlas((state) => state.points)
   const count = useAtlas((state) => state.count)
-  const clusters = useAtlas((state) => state.clusters)
-  const phase = useAtlas((state) => state.phase)
-  const metaLoaded = useAtlas((state) => state.metaLoaded)
-  const searchIndexed = useAtlas((state) => state.searchIndexed)
-  const visibleCount = useAtlas((state) => state.visibleCount)
+  const activeGenres = useAtlas((state) => state.activeGenres)
+  const toggleGenre = useAtlas((state) => state.toggleGenre)
+  const era = useAtlas((state) => state.era)
+  const setEra = useAtlas((state) => state.setEra)
+  const resetFilters = useAtlas((state) => state.resetFilters)
   const filterActive = useAtlas(
     (state) =>
       state.activeGenres.length > 0 || state.era !== 'all' || state.query.trim().length > 0,
   )
 
-  if (!count) return null
+  const counts = useMemo(() => {
+    const totals = new Array<number>(genres.length).fill(0)
+    if (!points) return totals
+    for (let i = 0; i < count; i++) {
+      const genre = points.attrs.genre[i]
+      if (genre < totals.length) totals[genre]++
+    }
+    return totals
+  }, [genres.length, points, count])
 
-  const metaProgress = count ? Math.min(1, metaLoaded / count) : 0
-  const indexProgress = count ? Math.min(1, searchIndexed / count) : 0
-  const loading = phase !== 'ready'
+  if (!genres.length) return null
 
   return (
-    <section
-      aria-label="Dataset statistics"
-      className="clay pointer-events-auto absolute left-3 top-[122px] z-20 hidden w-[196px] rounded-[24px] p-4 sm:block sm:left-4 sm:top-[132px]"
-    >
-      <p className="text-[9px] uppercase tracking-[0.2em] text-soft">On the globe</p>
-      <p className="font-serif text-[34px] leading-none text-ink">
-        {count.toLocaleString()}
-      </p>
-      <p className="mt-1 text-[11px] text-soft">books · {clusters.length} continents</p>
-
-      <div className="my-3 h-px w-full bg-[#d9dfe8]" />
-
-      <dl className="space-y-1.5 text-[11px]">
+    <aside className="rail-left" aria-label="Filters">
+      <AnimatedContent className="card card-pad genres-card">
         <div className="flex items-baseline justify-between gap-2">
-          <dt className="text-soft">In view</dt>
-          <dd className="tabular-nums text-ink">
-            {filterActive ? visibleCount.toLocaleString() : 'all'}
-          </dd>
+          <p className="eyebrow">Genres</p>
+          {filterActive ? (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="text-[10px] text-soft underline decoration-[#c8d0dc] underline-offset-2 hover:text-ink"
+            >
+              Reset
+            </button>
+          ) : null}
         </div>
-        <div className="flex items-baseline justify-between gap-2">
-          <dt className="text-soft">Vectors</dt>
-          <dd className="tabular-nums text-ink">384-d → 3-d</dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-2">
-          <dt className="text-soft">Neighbours</dt>
-          <dd className="tabular-nums text-ink">hnsw k=20</dd>
-        </div>
-      </dl>
 
-      {loading ? (
-        <div className="mt-3.5">
-          <div className="clay-inset-sm h-1.5 w-full overflow-hidden rounded-full">
-            <div
-              className="h-full rounded-full bg-[#b9aef0] transition-[width] duration-300"
-              style={{ width: `${Math.max(8, metaProgress * 100)}%` }}
-            />
-          </div>
-          <p className="mt-2 text-[10px] text-soft">
-            streaming metadata {metaLoaded.toLocaleString()}/{count.toLocaleString()}
-          </p>
+        <div className="genre-list">
+          {genres.map((genre, index) => {
+            const active = activeGenres.includes(index)
+            const dimmed = activeGenres.length > 0 && !active
+            return (
+              <button
+                key={genre.id}
+                type="button"
+                aria-pressed={active}
+                data-active={active}
+                data-dimmed={dimmed}
+                onClick={() => toggleGenre(index)}
+                className="genre-row"
+              >
+                <span
+                  className="genre-dot"
+                  style={{
+                    background: genre.color,
+                    boxShadow: 'inset 1px 1px 2px rgba(255,255,255,0.85)',
+                  }}
+                  aria-hidden
+                />
+                <span className={`flex-1 truncate ${active ? 'text-[#4a3fa8]' : 'text-ink'}`}>
+                  {genre.name}
+                </span>
+                <span className="tabular-nums text-[10px] text-soft">
+                  <CountUp value={counts[index] ?? 0} />
+                </span>
+              </button>
+            )
+          })}
         </div>
-      ) : indexProgress < 1 ? (
-        <p className="mt-3.5 text-[10px] text-soft">
-          indexing search {Math.round(indexProgress * 100)}%
-        </p>
-      ) : null}
-    </section>
+      </AnimatedContent>
+
+      <AnimatedContent className="card card-pad decade-card" delay={0.05}>
+        <p className="eyebrow mb-2">Decade</p>
+        <GooeyNav items={ERA_OPTIONS} value={era} onChange={setEra} label="Decade" />
+      </AnimatedContent>
+    </aside>
   )
 }
