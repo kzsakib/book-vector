@@ -42,7 +42,12 @@ export interface AtlasState {
   nearby: number[]
   nearbyLoading: boolean
   showNearby: boolean
+  showLabels: boolean
+  showLinks: boolean
+  autoRotate: boolean
   focus: Focus | null
+  /** Continent name shown (decrypted) while the camera flies to it. */
+  clusterFlash: { name: string; nonce: number } | null
 
   setManifest: (manifest: Manifest, clusters: Cluster[]) => void
   setPoints: (points: AtlasPoints, count: number) => void
@@ -61,6 +66,9 @@ export interface AtlasState {
   hover: (id: number | null) => void
   setPointer: (pointer: { x: number; y: number } | null) => void
   toggleNearby: () => void
+  toggleLabels: () => void
+  toggleLinks: () => void
+  toggleAutoRotate: () => void
   flyToCluster: (clusterId: number) => void
   focusBook: (id: number) => void
   recompute: () => void
@@ -95,9 +103,15 @@ function buildAlphas(state: AtlasState): { alphas: Uint8Array; visibleCount: num
     else alphas[i] = DIM_ALPHA
   }
 
-  // The selected book and its nearest neighbours stay legible regardless of filters.
-  if (selectedId != null && selectedId < count) alphas[selectedId] = 255
-  for (const id of nearby) if (id < count) alphas[id] = 255
+  // Selection focuses the globe: the chosen book and its neighbours stay at full
+  // strength while everything else recedes into the clay.
+  if (selectedId != null && selectedId < count) {
+    for (let i = 0; i < count; i++) {
+      if (i !== selectedId) alphas[i] = Math.min(alphas[i], 196)
+    }
+    alphas[selectedId] = 255
+    for (const id of nearby) if (id < count) alphas[id] = 255
+  }
 
   return { alphas, visibleCount }
 }
@@ -135,8 +149,12 @@ export const useAtlas = create<AtlasState>()((set, get) => ({
   pointer: null,
   nearby: [],
   nearbyLoading: false,
-  showNearby: false,
+  showNearby: true,
+  showLabels: true,
+  showLinks: true,
+  autoRotate: true,
   focus: null,
+  clusterFlash: null,
 
   setManifest: (manifest, clusters) =>
     set({
@@ -240,6 +258,9 @@ export const useAtlas = create<AtlasState>()((set, get) => ({
   setPointer: (pointer) => set({ pointer }),
 
   toggleNearby: () => set((state) => ({ showNearby: !state.showNearby })),
+  toggleLabels: () => set((state) => ({ showLabels: !state.showLabels })),
+  toggleLinks: () => set((state) => ({ showLinks: !state.showLinks })),
+  toggleAutoRotate: () => set((state) => ({ autoRotate: !state.autoRotate })),
 
   flyToCluster: (clusterId) => {
     const cluster = get().clusters.find((c) => c.id === clusterId)
@@ -248,9 +269,10 @@ export const useAtlas = create<AtlasState>()((set, get) => ({
     set({
       focus: {
         dir: cluster.centroid,
-        distance: 3.15,
+        zoom: 0.8,
         nonce: focusNonce,
       },
+      clusterFlash: { name: cluster.name, nonce: focusNonce },
     })
   },
 
@@ -263,7 +285,7 @@ export const useAtlas = create<AtlasState>()((set, get) => ({
     const len = Math.hypot(x, y, z) || 1
     focusNonce += 1
     set({
-      focus: { dir: [x / len, y / len, z / len], distance: 3.05, nonce: focusNonce },
+      focus: { dir: [x / len, y / len, z / len], zoom: 0.72, nonce: focusNonce },
     })
   },
 

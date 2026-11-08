@@ -28,6 +28,7 @@ let tree: KdTree | null = null
 
 let index: MiniSearch<SearchDoc> | null = null
 let indexed = 0
+const indexedIds = new Set<number>()
 
 function addToIndex(books: IndexableBook[]) {
   if (!index) {
@@ -42,8 +43,13 @@ function addToIndex(books: IndexableBook[]) {
       },
     })
   }
-  index.addAll(books as unknown as SearchDoc[])
-  indexed += books.length
+  // Metadata chunks can be re-sent after a dev reload or worker restart;
+  // MiniSearch throws on duplicate ids, so only add unseen books.
+  const fresh = books.filter((book) => !indexedIds.has(book.id))
+  if (!fresh.length) return
+  for (const book of fresh) indexedIds.add(book.id)
+  index.addAll(fresh as unknown as SearchDoc[])
+  indexed += fresh.length
 }
 
 /**
