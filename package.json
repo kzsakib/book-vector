@@ -1,0 +1,36 @@
+{
+  "name": "book-vector",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A neumorphic 3D globe where every book is a raised clay bump on a pale sphere.",
+  "scripts": {
+    "data:sample": "node scripts/generate-sample.mjs",
+    "predev": "node scripts/generate-sample.mjs --if-missing",
+    "dev": "vite",
+    "prebuild": "node scripts/generate-sample.mjs",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "pipeline:check": "python3 -m py_compile pipeline/*.py"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.0.0",
+    "@react-three/fiber": "^9.0.0",
+    "minisearch": "^7.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.180.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.180.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "~5.9.0",
+    "vite": "^7.0.0"
+  }
+}
