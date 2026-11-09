@@ -7,16 +7,16 @@ import { genreTint, PALETTE } from '../lib/theme'
 import { atlasView, registerViewCommands } from '../lib/view'
 import { useAtlas } from '../store/atlas'
 import { useReducedMotion } from '../hooks/useReducedMotion'
-import AmbientThreads from './AmbientThreads'
 import ArcLinks from './ArcLinks'
-import BookInstances from './BookInstances'
+import BookDots from './BookDots'
 import ClusterLabels from './ClusterLabels'
-import HoverRings from './HoverRings'
 import Picking from './Picking'
 import SelectedPin from './SelectedPin'
 
-const FOV = 32
+const FOV = 30
 const START_DIR = new THREE.Vector3(0.46, 0.34, 0.82).normalize()
+/** 0.44 * the shorter side of the canvas, per the layout brief. */
+const FRAME_FRACTION = 0.44
 
 export default function GlobeScene() {
   return (
@@ -26,7 +26,7 @@ export default function GlobeScene() {
         dpr={[1, 2]}
         gl={{
           antialias: true,
-          alpha: false,
+          alpha: true,
           powerPreference: 'high-performance',
           toneMapping: THREE.ACESFilmicToneMapping,
           outputColorSpace: THREE.SRGBColorSpace,
@@ -34,9 +34,8 @@ export default function GlobeScene() {
         camera={{ position: [3, 2.4, 7], fov: FOV, near: 0.1, far: 60 }}
         style={{ touchAction: 'none' }}
         role="img"
-        aria-label="A pale clay globe covered in thousands of pastel bumps. Each bump is a book; similar books sit together. Use the filters, search, or the hidden book list to explore."
+        aria-label="A pale clay globe covered in small pastel spheres. Each sphere is a book; similar books sit together. Use the filters, search, or the hidden book list to explore."
       >
-        <color attach="background" args={[PALETTE.canvas]} />
         <Suspense fallback={null}>
           <Scene />
         </Suspense>
@@ -55,7 +54,6 @@ function Scene() {
 
   const rotating = autoRotate && idle && !reduced
 
-  // Resume the idle drift once the user has stopped touching the globe.
   useEffect(() => {
     if (!idle) {
       resume.current = window.setTimeout(() => setIdle(true), 4000)
@@ -70,8 +68,8 @@ function Scene() {
         const base = (camera.userData.baseDistance as number | undefined) ?? 8
         const distance = THREE.MathUtils.clamp(
           camera.position.length() / factor,
-          base * 0.62,
-          base * 1.9,
+          base * 0.92,
+          base * 1.6,
         )
         camera.position.setLength(distance)
         camera.lookAt(0, 0, 0)
@@ -90,14 +88,14 @@ function Scene() {
 
   return (
     <>
-      {/* Soft studio: a large key from the top-left, a cool fill, a faint rim. */}
-      <ambientLight intensity={0.55} />
-      <hemisphereLight args={['#FFFFFF', '#D6DCE6', 0.7]} />
-      <directionalLight position={[-4.5, 5.5, 6]} intensity={1.9} color="#FFFAF4" />
+      <ambientLight intensity={0.62} />
+      <hemisphereLight args={['#FFFFFF', '#CBD3E0', 0.55]} />
+      <directionalLight position={[-5, 5.5, 5.5]} intensity={2.15} color="#FFFAF4" />
+      <directionalLight position={[4, -2, 3]} intensity={0.35} color="#D9E3FF" />
       <Environment resolution={128} frames={1}>
         <Lightformer
           form="rect"
-          intensity={3.2}
+          intensity={3.4}
           position={[-5, 5, 4]}
           rotation={[0, Math.PI / 5, 0]}
           scale={[10, 10, 1]}
@@ -105,7 +103,7 @@ function Scene() {
         />
         <Lightformer
           form="rect"
-          intensity={1.4}
+          intensity={1.5}
           position={[6, 1, 3]}
           rotation={[0, -Math.PI / 4, 0]}
           scale={[8, 8, 1]}
@@ -113,7 +111,7 @@ function Scene() {
         />
         <Lightformer
           form="ring"
-          intensity={0.9}
+          intensity={0.8}
           position={[0, -2, -6]}
           scale={9}
           color="#ffffff"
@@ -121,14 +119,12 @@ function Scene() {
       </Environment>
 
       <Rings />
+      <Graticule />
       <Globe />
-      <GroundShadow />
-      <BookInstances />
-      <AmbientThreads />
+      <BookDots />
       <ClusterLabels />
       <ArcLinks />
       <SelectedPin />
-      <HoverRings />
 
       <Picking />
       <Framing fov={FOV} />
@@ -143,7 +139,7 @@ function Scene() {
         dampingFactor={0.08}
         rotateSpeed={0.6}
         zoomSpeed={0.7}
-        minDistance={2.6}
+        minDistance={8}
         maxDistance={16}
         minPolarAngle={0.22}
         maxPolarAngle={Math.PI - 0.22}
@@ -156,39 +152,7 @@ function Scene() {
   )
 }
 
-/** Blurred radial pool of shade under the globe. */
-function GroundShadow() {
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 256
-    canvas.height = 128
-    const context = canvas.getContext('2d')
-    if (context) {
-      const gradient = context.createRadialGradient(128, 64, 4, 128, 64, 124)
-      gradient.addColorStop(0, 'rgba(74, 88, 116, 0.42)')
-      gradient.addColorStop(0.55, 'rgba(74, 88, 116, 0.18)')
-      gradient.addColorStop(1, 'rgba(74, 88, 116, 0)')
-      context.fillStyle = gradient
-      context.fillRect(0, 0, 256, 128)
-    }
-    const map = new THREE.CanvasTexture(canvas)
-    map.colorSpace = THREE.SRGBColorSpace
-    return map
-  }, [])
-
-  return (
-    <mesh
-      position={[0, -SPHERE_RADIUS * 1.34, 0]}
-      rotation={[-Math.PI / 2, 0, 0]}
-      renderOrder={-3}
-    >
-      <planeGeometry args={[SPHERE_RADIUS * 3.4, SPHERE_RADIUS * 1.9]} />
-      <meshBasicMaterial map={texture} transparent depthWrite={false} opacity={0.9} />
-    </mesh>
-  )
-}
-
-/** Pale concentric rings, camera-locked behind the globe. */
+/** Two faint decorative rings, camera-locked behind the globe. */
 function Rings() {
   const camera = useThree((state) => state.camera)
   const group = useRef<THREE.Group>(null)
@@ -206,13 +170,13 @@ function Rings() {
 
   return (
     <group ref={group} renderOrder={-6}>
-      {[1.24, 1.5, 1.8].map((factor, index) => (
+      {[1.18, 1.34].map((factor) => (
         <mesh key={factor} renderOrder={-6}>
-          <ringGeometry args={[SPHERE_RADIUS * factor, SPHERE_RADIUS * factor + 0.006, 160]} />
+          <ringGeometry args={[SPHERE_RADIUS * factor, SPHERE_RADIUS * factor + 0.005, 160]} />
           <meshBasicMaterial
-            color={index === 1 ? '#F7F9FC' : '#FFFFFF'}
+            color="#FFFFFF"
             transparent
-            opacity={index === 1 ? 0.7 : 0.5}
+            opacity={0.42}
             depthWrite={false}
             depthTest={false}
           />
@@ -222,11 +186,57 @@ function Rings() {
   )
 }
 
-/**
- * Sphere with genre regions blended into the surface (vertex colours) and a
- * fresnel limb darkening injected into the standard material, so the globe
- * reads as a lit volume rather than a flat disc.
- */
+/** Latitude/longitude every 30°, so rotation and depth stay legible. */
+function Graticule() {
+  const geometry = useMemo(() => {
+    const positions: number[] = []
+    const radius = SPHERE_RADIUS * 1.001
+    const segments = 96
+
+    for (let lat = -60; lat <= 60; lat += 30) {
+      const phi = THREE.MathUtils.degToRad(90 - lat)
+      const r = Math.sin(phi) * radius
+      const y = Math.cos(phi) * radius
+      for (let i = 0; i < segments; i++) {
+        const a = (i / segments) * Math.PI * 2
+        const b = ((i + 1) / segments) * Math.PI * 2
+        positions.push(Math.cos(a) * r, y, Math.sin(a) * r)
+        positions.push(Math.cos(b) * r, y, Math.sin(b) * r)
+      }
+    }
+    for (let lon = 0; lon < 360; lon += 30) {
+      const theta = THREE.MathUtils.degToRad(lon)
+      for (let i = 0; i < segments; i++) {
+        const p1 = (i / segments) * Math.PI
+        const p2 = ((i + 1) / segments) * Math.PI
+        positions.push(
+          Math.sin(p1) * Math.cos(theta) * radius,
+          Math.cos(p1) * radius,
+          Math.sin(p1) * Math.sin(theta) * radius,
+        )
+        positions.push(
+          Math.sin(p2) * Math.cos(theta) * radius,
+          Math.cos(p2) * radius,
+          Math.sin(p2) * Math.sin(theta) * radius,
+        )
+      }
+    }
+
+    const buffer = new THREE.BufferGeometry()
+    buffer.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    return buffer
+  }, [])
+
+  useEffect(() => () => geometry.dispose(), [geometry])
+
+  return (
+    <lineSegments geometry={geometry} renderOrder={-1}>
+      <lineBasicMaterial color="#7C8AA0" transparent opacity={0.16} depthWrite={false} />
+    </lineSegments>
+  )
+}
+
+/** Lit clay sphere: baked light ramp, region tints, fresnel limb and lit rim. */
 function Globe() {
   const clusters = useAtlas((state) => state.clusters)
 
@@ -235,6 +245,9 @@ function Globe() {
     const position = geo.attributes.position
     const colours = new Float32Array(position.count * 3)
     const base = new THREE.Color(PALETTE.globe)
+    const lightSide = new THREE.Color('#F4F6FA')
+    const shadeSide = new THREE.Color('#BCC4D2')
+    const keyDir = new THREE.Vector3(-0.62, 0.52, 0.58).normalize()
     const tints = clusters.map((cluster) => new THREE.Color(genreTint(cluster.genre)))
     const centroids = clusters.map((cluster) =>
       new THREE.Vector3(...cluster.centroid).normalize(),
@@ -244,17 +257,18 @@ function Globe() {
 
     for (let i = 0; i < position.count; i++) {
       vertex.set(position.getX(i), position.getY(i), position.getZ(i)).normalize()
-      mixed.copy(base)
-      let weight = 0
+      const light = THREE.MathUtils.clamp(vertex.dot(keyDir), -1, 1) * 0.5 + 0.5
+      mixed.copy(shadeSide).lerp(lightSide, Math.pow(light, 0.9))
+      mixed.lerp(base, 0.25)
+
       for (let c = 0; c < centroids.length; c++) {
         const dot = vertex.dot(centroids[c])
-        if (dot <= 0.84) continue
-        const t = Math.min(1, (dot - 0.84) / 0.16)
+        if (dot <= 0.82) continue
+        const t = Math.min(1, (dot - 0.82) / 0.18)
         const smooth = t * t * (3 - 2 * t)
-        mixed.lerp(tints[c], smooth * 0.34)
-        weight += smooth
+        mixed.lerp(tints[c], smooth * 0.2)
       }
-      if (weight === 0) mixed.copy(base)
+
       colours[i * 3] = mixed.r
       colours[i * 3 + 1] = mixed.g
       colours[i * 3 + 2] = mixed.b
@@ -266,11 +280,9 @@ function Globe() {
   const material = useMemo(() => {
     const mat = new THREE.MeshStandardMaterial({
       color: '#FFFFFF',
-      roughness: 0.85,
+      roughness: 0.9,
       metalness: 0,
       vertexColors: true,
-      emissive: new THREE.Color('#EDF0F5'),
-      emissiveIntensity: 0.18,
     })
     mat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
@@ -292,22 +304,20 @@ function Globe() {
           [
             '#include <dithering_fragment>',
             'vec3 atlasView = normalize(cameraPosition - vAtlasPos);',
-            'float atlasFres = pow(1.0 - clamp(dot(normalize(vAtlasNormal), atlasView), 0.0, 1.0), 2.6);',
-            'gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.788, 0.812, 0.855), atlasFres * 0.55);',
-            'gl_FragColor.rgb += vec3(0.05) * smoothstep(0.78, 1.0, atlasFres);',
+            'float atlasFres = pow(1.0 - clamp(dot(normalize(vAtlasNormal), atlasView), 0.0, 1.0), 2.4);',
+            'gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.737, 0.769, 0.824), atlasFres * 0.6);',
+            'float atlasRim = smoothstep(0.72, 0.98, atlasFres) * smoothstep(-0.25, 0.55, dot(normalize(vAtlasNormal), vec3(-0.62, 0.52, 0.58)));',
+            'gl_FragColor.rgb += vec3(0.16) * atlasRim;',
           ].join('\n'),
         )
     }
     return mat
   }, [])
 
-  return <mesh geometry={geometry} material={material} renderOrder={-2} />
+  return <mesh geometry={geometry} material={material} renderOrder={0} />
 }
 
-/**
- * Frames the sphere so its radius is 0.40 * min(canvas width, canvas height),
- * then keeps that ratio when the cell resizes without discarding user zoom.
- */
+/** Frames the sphere at 0.44 * the shorter canvas side and clamps zoom. */
 function Framing({ fov }: { fov: number }) {
   const size = useThree((state) => state.size)
   const camera = useThree((state) => state.camera)
@@ -319,10 +329,8 @@ function Framing({ fov }: { fov: number }) {
 
   useEffect(() => {
     if (!(camera instanceof THREE.PerspectiveCamera) || size.height <= 0) return
-    // Reserve room for the dock and hint so the sphere never sits under them.
-    const usableHeight = Math.max(220, size.height - 104)
-    const half = usableHeight / 2
-    const fraction = (0.4 * Math.min(size.width, usableHeight)) / half
+    const radiusPx = FRAME_FRACTION * Math.min(size.width, size.height)
+    const fraction = (2 * radiusPx) / size.height
     const tanHalf = Math.tan((fov * Math.PI) / 360)
     const distance = SPHERE_RADIUS / (tanHalf * Math.max(0.2, fraction))
 
@@ -338,8 +346,8 @@ function Framing({ fov }: { fov: number }) {
     }
     camera.lookAt(0, 0, 0)
     if (controls) {
-      controls.minDistance = distance * 0.62
-      controls.maxDistance = distance * 1.9
+      controls.minDistance = distance * 0.92
+      controls.maxDistance = distance * 1.6
       controls.update()
     }
     camera.updateProjectionMatrix()
@@ -349,7 +357,6 @@ function Framing({ fov }: { fov: number }) {
   return null
 }
 
-/** Keeps rendering while the globe auto-rotates under frameloop="demand". */
 function AutoRotateLoop({ active }: { active: boolean }) {
   const invalidate = useThree((state) => state.invalidate)
   useFrame(() => {
@@ -358,10 +365,7 @@ function AutoRotateLoop({ active }: { active: boolean }) {
   return null
 }
 
-/**
- * Fly-to along a great circle: the camera direction slerps while the radius
- * eases, 1.1s with a symmetric power curve. Reduced motion jumps straight there.
- */
+/** Great-circle fly-to over 900ms with power3.inOut easing. */
 function CameraRig() {
   const focus = useAtlas((state) => state.focus)
   const reduced = useReducedMotion()
@@ -380,7 +384,11 @@ function CameraRig() {
     if (!focus) return
     const baseDistance = (camera.userData.baseDistance as number | undefined) ?? 8
     const toDir = new THREE.Vector3(...focus.dir).normalize()
-    const toRadius = baseDistance * focus.zoom
+    const toRadius = THREE.MathUtils.clamp(
+      baseDistance * focus.zoom,
+      baseDistance * 0.92,
+      baseDistance * 1.6,
+    )
     if (reduced) {
       camera.position.copy(toDir).multiplyScalar(toRadius)
       camera.lookAt(0, 0, 0)
@@ -401,7 +409,7 @@ function CameraRig() {
   useFrame(() => {
     const current = flight.current
     if (!current) return
-    const t = THREE.MathUtils.clamp((performance.now() - current.startedAt) / 1100, 0, 1)
+    const t = THREE.MathUtils.clamp((performance.now() - current.startedAt) / 900, 0, 1)
     const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
     const dir = current.fromDir.clone().lerp(current.toDir, eased).normalize()
     const radius = THREE.MathUtils.lerp(current.fromRadius, current.toRadius, eased)
@@ -415,7 +423,7 @@ function CameraRig() {
   return null
 }
 
-/** Reports the current zoom level and drops DPR below 45 fps. */
+/** Publishes zoom for labels and drops DPR below 45 fps. */
 function PerfGuard() {
   const setDpr = useThree((state) => state.setDpr)
   const gl = useThree((state) => state.gl)
