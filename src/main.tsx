@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { useAtlas } from './store/atlas'
 import './index.css'
+import './styles/atlas.css'
 
 if (import.meta.env.DEV) {
   // Handy for browser debugging and scripted checks during development.

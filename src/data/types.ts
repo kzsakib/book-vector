@@ -56,7 +56,7 @@ export interface AtlasPoints {
   neighbors: Uint32Array
 }
 
-export type Era = 'all' | 'pre1900' | '1900s' | '1960s' | '2000s'
+export type Era = 'all' | 'pre1900' | '1900s' | '1960s' | '2000s' | 'custom'
 
 export interface Focus {
   dir: [number, number, number]
