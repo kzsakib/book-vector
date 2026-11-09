@@ -6,12 +6,13 @@
   "description": "A neumorphic 3D globe where every book is a raised clay bump on a pale sphere.",
   "scripts": {
     "data:sample": "node scripts/generate-sample.mjs",
-    "predev": "node scripts/generate-sample.mjs --if-missing",
+    "predev": "node scripts/generate-sample.mjs --if-missing && node scripts/fetch-fonts.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/generate-sample.mjs",
+    "prebuild": "node scripts/generate-sample.mjs && node scripts/fetch-fonts.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
+    "fonts": "node scripts/fetch-fonts.mjs",
     "pipeline:check": "python3 -m py_compile pipeline/*.py"
   },
   "dependencies": {
