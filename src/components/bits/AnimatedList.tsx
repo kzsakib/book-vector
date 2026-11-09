@@ -11,6 +11,8 @@ interface AnimatedListProps {
   onSelect: (id: number) => void
   ariaLabel: string
   className?: string
+  /** Class applied to every row (e.g. "nearby-row"). */
+  rowClassName?: string
 }
 
 /** Staggered entry plus ArrowUp/ArrowDown/Home/End/Enter keyboard selection. */
@@ -19,6 +21,7 @@ export default function AnimatedList({
   onSelect,
   ariaLabel,
   className,
+  rowClassName,
 }: AnimatedListProps) {
   const [active, setActive] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
@@ -71,9 +74,7 @@ export default function AnimatedList({
               onSelect(item.id)
             }
           }}
-          className={`cursor-pointer rounded-2xl px-2 py-1.5 transition-colors ${
-            index === active ? 'clay-inset' : 'hover:bg-white/40'
-          }`}
+          className={rowClassName ?? 'cursor-pointer rounded-2xl px-2 py-1.5 transition-colors'}
         >
           {item.content}
         </motion.div>

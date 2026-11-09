@@ -5,13 +5,13 @@ export const SPHERE_RADIUS = 2
 
 /**
  * Bump footprints interpolated by popularity. With a globe radius of 2 these are
- * 1.0%–1.6% of the radius, so 2,000 bumps read as clay speckle rather than dust.
+ * 1.1%–1.8% of the radius, so 2,000 domes read as clay terrain rather than dust.
  */
 export const BUMP = {
-  minRadius: SPHERE_RADIUS * 0.01,
-  maxRadius: SPHERE_RADIUS * 0.016,
-  minHeight: SPHERE_RADIUS * 0.0056,
-  maxHeight: SPHERE_RADIUS * 0.0092,
+  minRadius: SPHERE_RADIUS * 0.011,
+  maxRadius: SPHERE_RADIUS * 0.018,
+  minHeight: SPHERE_RADIUS * 0.0062,
+  maxHeight: SPHERE_RADIUS * 0.0102,
 } as const
 
 /** Visibility (0-255) for bumps excluded by search or filters. */
