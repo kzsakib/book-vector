@@ -124,7 +124,8 @@ export default function ClusterLabels() {
       const height = element.offsetHeight || 16
       // Ease rim labels inward instead of dropping them at the silhouette.
       const x = Math.min(Math.max(rawX, width / 2 + 8), size.width - width / 2 - 8)
-      const y = Math.min(Math.max(rawY, height / 2 + 8), size.height - height / 2 - 8)
+      // Keep continent names above the dock and hint strip.
+      const y = Math.min(Math.max(rawY, height / 2 + 8), size.height - height / 2 - 112)
       const box = { x: x - width / 2, y: y - height / 2, w: width, h: height }
       // Never let a label spill past the stage edge.
       if (

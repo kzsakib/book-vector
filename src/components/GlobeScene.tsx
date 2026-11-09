@@ -1,9 +1,9 @@
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
+import { Environment, Lightformer, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { SPHERE_RADIUS } from '../data/format'
-import { PALETTE } from '../lib/theme'
+import { genreTint, PALETTE } from '../lib/theme'
 import { atlasView, registerViewCommands } from '../lib/view'
 import { useAtlas } from '../store/atlas'
 import { useReducedMotion } from '../hooks/useReducedMotion'
@@ -24,9 +24,17 @@ export default function GlobeScene() {
       <Canvas
         frameloop="demand"
         dpr={[1, 2]}
-        gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
+        gl={{
+          antialias: true,
+          alpha: false,
+          powerPreference: 'high-performance',
+          toneMapping: THREE.ACESFilmicToneMapping,
+          outputColorSpace: THREE.SRGBColorSpace,
+        }}
         camera={{ position: [3, 2.4, 7], fov: FOV, near: 0.1, far: 60 }}
         style={{ touchAction: 'none' }}
+        role="img"
+        aria-label="A pale clay globe covered in thousands of pastel bumps. Each bump is a book; similar books sit together. Use the filters, search, or the hidden book list to explore."
       >
         <color attach="background" args={[PALETTE.canvas]} />
         <Suspense fallback={null}>
@@ -40,13 +48,22 @@ export default function GlobeScene() {
 function Scene() {
   const reduced = useReducedMotion()
   const autoRotate = useAtlas((state) => state.autoRotate)
-  const [touched, setTouched] = useState(false)
+  const [idle, setIdle] = useState(true)
   const invalidate = useThree((state) => state.invalidate)
   const camera = useThree((state) => state.camera)
+  const resume = useRef(0)
 
-  const rotating = autoRotate && !touched && !reduced
+  const rotating = autoRotate && idle && !reduced
 
-  // Dock commands: dolly the camera within the framed bounds, or go home.
+  // Resume the idle drift once the user has stopped touching the globe.
+  useEffect(() => {
+    if (!idle) {
+      resume.current = window.setTimeout(() => setIdle(true), 4000)
+      return () => window.clearTimeout(resume.current)
+    }
+    return undefined
+  }, [idle])
+
   useEffect(() => {
     registerViewCommands({
       zoom: (factor) => {
@@ -73,14 +90,39 @@ function Scene() {
 
   return (
     <>
-      {/* three's PBR path divides irradiance by PI, so these are the pale-clay
-          equivalents of ambient 0.65 / hemisphere 0.5 / key 1.1. */}
-      <ambientLight intensity={1.3} />
-      <hemisphereLight args={['#FFFFFF', '#D3D9E3', 0.9]} />
-      <directionalLight position={[-4.5, 5.5, 6]} intensity={2.2} color="#FFFAF4" />
+      {/* Soft studio: a large key from the top-left, a cool fill, a faint rim. */}
+      <ambientLight intensity={0.55} />
+      <hemisphereLight args={['#FFFFFF', '#D6DCE6', 0.7]} />
+      <directionalLight position={[-4.5, 5.5, 6]} intensity={1.9} color="#FFFAF4" />
+      <Environment resolution={128} frames={1}>
+        <Lightformer
+          form="rect"
+          intensity={3.2}
+          position={[-5, 5, 4]}
+          rotation={[0, Math.PI / 5, 0]}
+          scale={[10, 10, 1]}
+          color="#fff8ef"
+        />
+        <Lightformer
+          form="rect"
+          intensity={1.4}
+          position={[6, 1, 3]}
+          rotation={[0, -Math.PI / 4, 0]}
+          scale={[8, 8, 1]}
+          color="#dfe8ff"
+        />
+        <Lightformer
+          form="ring"
+          intensity={0.9}
+          position={[0, -2, -6]}
+          scale={9}
+          color="#ffffff"
+        />
+      </Environment>
 
       <Rings />
       <Globe />
+      <GroundShadow />
       <BookInstances />
       <AmbientThreads />
       <ClusterLabels />
@@ -98,17 +140,51 @@ function Scene() {
         makeDefault
         enablePan={false}
         enableDamping
-        dampingFactor={0.075}
-        rotateSpeed={0.45}
-        zoomSpeed={0.8}
+        dampingFactor={0.08}
+        rotateSpeed={0.6}
+        zoomSpeed={0.7}
         minDistance={2.6}
         maxDistance={16}
+        minPolarAngle={0.22}
+        maxPolarAngle={Math.PI - 0.22}
         autoRotate={rotating}
-        autoRotateSpeed={0.32}
+        autoRotateSpeed={0.5}
+        onStart={() => setIdle(false)}
         onChange={() => invalidate()}
-        onStart={() => setTouched(true)}
       />
     </>
+  )
+}
+
+/** Blurred radial pool of shade under the globe. */
+function GroundShadow() {
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 256
+    canvas.height = 128
+    const context = canvas.getContext('2d')
+    if (context) {
+      const gradient = context.createRadialGradient(128, 64, 4, 128, 64, 124)
+      gradient.addColorStop(0, 'rgba(74, 88, 116, 0.42)')
+      gradient.addColorStop(0.55, 'rgba(74, 88, 116, 0.18)')
+      gradient.addColorStop(1, 'rgba(74, 88, 116, 0)')
+      context.fillStyle = gradient
+      context.fillRect(0, 0, 256, 128)
+    }
+    const map = new THREE.CanvasTexture(canvas)
+    map.colorSpace = THREE.SRGBColorSpace
+    return map
+  }, [])
+
+  return (
+    <mesh
+      position={[0, -SPHERE_RADIUS * 1.34, 0]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      renderOrder={-3}
+    >
+      <planeGeometry args={[SPHERE_RADIUS * 3.4, SPHERE_RADIUS * 1.9]} />
+      <meshBasicMaterial map={texture} transparent depthWrite={false} opacity={0.9} />
+    </mesh>
   )
 }
 
@@ -130,15 +206,13 @@ function Rings() {
 
   return (
     <group ref={group} renderOrder={-6}>
-      {[1.22, 1.46, 1.72].map((factor, index) => (
+      {[1.24, 1.5, 1.8].map((factor, index) => (
         <mesh key={factor} renderOrder={-6}>
-          <ringGeometry
-            args={[SPHERE_RADIUS * factor, SPHERE_RADIUS * factor + 0.007, 160]}
-          />
+          <ringGeometry args={[SPHERE_RADIUS * factor, SPHERE_RADIUS * factor + 0.006, 160]} />
           <meshBasicMaterial
-            color="#FFFFFF"
+            color={index === 1 ? '#F7F9FC' : '#FFFFFF'}
             transparent
-            opacity={index === 1 ? 0.6 : 0.42}
+            opacity={index === 1 ? 0.7 : 0.5}
             depthWrite={false}
             depthTest={false}
           />
@@ -148,23 +222,90 @@ function Rings() {
   )
 }
 
+/**
+ * Sphere with genre regions blended into the surface (vertex colours) and a
+ * fresnel limb darkening injected into the standard material, so the globe
+ * reads as a lit volume rather than a flat disc.
+ */
 function Globe() {
-  return (
-    <mesh renderOrder={-2}>
-      <sphereGeometry args={[SPHERE_RADIUS, 96, 64]} />
-      <meshStandardMaterial
-        color={PALETTE.globe}
-        roughness={1}
-        metalness={0}
-        emissive={PALETTE.canvas}
-        emissiveIntensity={0.42}
-      />
-    </mesh>
-  )
+  const clusters = useAtlas((state) => state.clusters)
+
+  const geometry = useMemo(() => {
+    const geo = new THREE.SphereGeometry(SPHERE_RADIUS, 96, 64)
+    const position = geo.attributes.position
+    const colours = new Float32Array(position.count * 3)
+    const base = new THREE.Color(PALETTE.globe)
+    const tints = clusters.map((cluster) => new THREE.Color(genreTint(cluster.genre)))
+    const centroids = clusters.map((cluster) =>
+      new THREE.Vector3(...cluster.centroid).normalize(),
+    )
+    const vertex = new THREE.Vector3()
+    const mixed = new THREE.Color()
+
+    for (let i = 0; i < position.count; i++) {
+      vertex.set(position.getX(i), position.getY(i), position.getZ(i)).normalize()
+      mixed.copy(base)
+      let weight = 0
+      for (let c = 0; c < centroids.length; c++) {
+        const dot = vertex.dot(centroids[c])
+        if (dot <= 0.84) continue
+        const t = Math.min(1, (dot - 0.84) / 0.16)
+        const smooth = t * t * (3 - 2 * t)
+        mixed.lerp(tints[c], smooth * 0.34)
+        weight += smooth
+      }
+      if (weight === 0) mixed.copy(base)
+      colours[i * 3] = mixed.r
+      colours[i * 3 + 1] = mixed.g
+      colours[i * 3 + 2] = mixed.b
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colours, 3))
+    return geo
+  }, [clusters])
+
+  const material = useMemo(() => {
+    const mat = new THREE.MeshStandardMaterial({
+      color: '#FFFFFF',
+      roughness: 0.85,
+      metalness: 0,
+      vertexColors: true,
+      emissive: new THREE.Color('#EDF0F5'),
+      emissiveIntensity: 0.18,
+    })
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nvarying vec3 vAtlasPos;\nvarying vec3 vAtlasNormal;',
+        )
+        .replace(
+          '#include <worldpos_vertex>',
+          '#include <worldpos_vertex>\nvAtlasPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvAtlasNormal = normalize(mat3(modelMatrix) * objectNormal);',
+        )
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nvarying vec3 vAtlasPos;\nvarying vec3 vAtlasNormal;',
+        )
+        .replace(
+          '#include <dithering_fragment>',
+          [
+            '#include <dithering_fragment>',
+            'vec3 atlasView = normalize(cameraPosition - vAtlasPos);',
+            'float atlasFres = pow(1.0 - clamp(dot(normalize(vAtlasNormal), atlasView), 0.0, 1.0), 2.6);',
+            'gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.788, 0.812, 0.855), atlasFres * 0.55);',
+            'gl_FragColor.rgb += vec3(0.05) * smoothstep(0.78, 1.0, atlasFres);',
+          ].join('\n'),
+        )
+    }
+    return mat
+  }, [])
+
+  return <mesh geometry={geometry} material={material} renderOrder={-2} />
 }
 
 /**
- * Frames the sphere so its radius is 0.42 * min(canvas width, canvas height),
+ * Frames the sphere so its radius is 0.40 * min(canvas width, canvas height),
  * then keeps that ratio when the cell resizes without discarding user zoom.
  */
 function Framing({ fov }: { fov: number }) {
@@ -178,8 +319,10 @@ function Framing({ fov }: { fov: number }) {
 
   useEffect(() => {
     if (!(camera instanceof THREE.PerspectiveCamera) || size.height <= 0) return
-    const half = Math.max(1, size.height / 2)
-    const fraction = (0.42 * Math.min(size.width, size.height)) / half
+    // Reserve room for the dock and hint so the sphere never sits under them.
+    const usableHeight = Math.max(220, size.height - 104)
+    const half = usableHeight / 2
+    const fraction = (0.4 * Math.min(size.width, usableHeight)) / half
     const tanHalf = Math.tan((fov * Math.PI) / 360)
     const distance = SPHERE_RADIUS / (tanHalf * Math.max(0.2, fraction))
 
@@ -215,43 +358,57 @@ function AutoRotateLoop({ active }: { active: boolean }) {
   return null
 }
 
-/** Smooth fly-to for clusters and search results. */
+/**
+ * Fly-to along a great circle: the camera direction slerps while the radius
+ * eases, 1.1s with a symmetric power curve. Reduced motion jumps straight there.
+ */
 function CameraRig() {
   const focus = useAtlas((state) => state.focus)
   const reduced = useReducedMotion()
   const camera = useThree((state) => state.camera)
   const controls = useThree((state) => state.controls) as { update: () => void } | null
   const invalidate = useThree((state) => state.invalidate)
-  const destination = useRef<THREE.Vector3 | null>(null)
+  const flight = useRef<{
+    fromDir: THREE.Vector3
+    toDir: THREE.Vector3
+    fromRadius: number
+    toRadius: number
+    startedAt: number
+  } | null>(null)
 
   useEffect(() => {
     if (!focus) return
     const baseDistance = (camera.userData.baseDistance as number | undefined) ?? 8
-    const target = new THREE.Vector3(...focus.dir)
-      .normalize()
-      .multiplyScalar(baseDistance * focus.zoom)
+    const toDir = new THREE.Vector3(...focus.dir).normalize()
+    const toRadius = baseDistance * focus.zoom
     if (reduced) {
-      camera.position.copy(target)
+      camera.position.copy(toDir).multiplyScalar(toRadius)
       camera.lookAt(0, 0, 0)
       controls?.update()
       invalidate()
       return
     }
-    destination.current = target
+    flight.current = {
+      fromDir: camera.position.clone().normalize(),
+      toDir,
+      fromRadius: camera.position.length(),
+      toRadius,
+      startedAt: performance.now(),
+    }
     invalidate()
   }, [focus, reduced, camera, controls, invalidate])
 
-  useFrame((_, delta) => {
-    const target = destination.current
-    if (!target) return
-    const t = 1 - Math.exp(-5.5 * Math.min(delta, 0.1))
-    camera.position.lerp(target, t)
+  useFrame(() => {
+    const current = flight.current
+    if (!current) return
+    const t = THREE.MathUtils.clamp((performance.now() - current.startedAt) / 1100, 0, 1)
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+    const dir = current.fromDir.clone().lerp(current.toDir, eased).normalize()
+    const radius = THREE.MathUtils.lerp(current.fromRadius, current.toRadius, eased)
+    camera.position.copy(dir.multiplyScalar(radius))
     camera.lookAt(0, 0, 0)
-    if (camera.position.distanceTo(target) < 0.006) {
-      camera.position.copy(target)
-      camera.lookAt(0, 0, 0)
-      destination.current = null
-    }
+    controls?.update()
+    if (t >= 1) flight.current = null
     invalidate()
   })
 
@@ -284,7 +441,6 @@ function PerfGuard() {
       sample.current.frames = 0
       sample.current.time = 0
     }
-    // Damping needs a follow-up frame after the pointer stops.
     if (controls) controls.update()
   })
 
