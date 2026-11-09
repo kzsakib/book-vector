@@ -1,10 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, type CSSProperties, type KeyboardEvent } from 'react'
 import { ERA_OPTIONS, useAtlas } from '../store/atlas'
 import AnimatedContent from './bits/AnimatedContent'
 import CountUp from './bits/CountUp'
-import GooeyNav from './bits/GooeyNav'
 
-/** Left rail: one Genres card (multi-select) and one Decade control. */
+/** Left rail: one Genres card (multi-select) and one segmented Decade control. */
 export default function StatsPanel() {
   const genres = useAtlas((state) => state.genres)
   const points = useAtlas((state) => state.points)
@@ -31,23 +30,29 @@ export default function StatsPanel() {
 
   if (!genres.length) return null
 
+  const eraIndex = Math.max(0, ERA_OPTIONS.findIndex((option) => option.id === era))
+
+  const onEraKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+    event.preventDefault()
+    const delta = event.key === 'ArrowRight' ? 1 : -1
+    const next = (eraIndex + delta + ERA_OPTIONS.length) % ERA_OPTIONS.length
+    setEra(ERA_OPTIONS[next].id)
+  }
+
   return (
     <aside className="rail-left" aria-label="Filters">
       <AnimatedContent className="card card-pad genres-card">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="card-head">
           <p className="eyebrow">Genres</p>
           {filterActive ? (
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="text-[10px] text-soft underline decoration-[#c8d0dc] underline-offset-2 hover:text-ink"
-            >
+            <button type="button" onClick={resetFilters} className="btn btn-ghost btn-sm px-2">
               Reset
             </button>
           ) : null}
         </div>
 
-        <div className="genre-list">
+        <div className="genre-list" role="group" aria-label="Genres">
           {genres.map((genre, index) => {
             const active = activeGenres.includes(index)
             const dimmed = activeGenres.length > 0 && !active
@@ -55,24 +60,16 @@ export default function StatsPanel() {
               <button
                 key={genre.id}
                 type="button"
-                aria-pressed={active}
+                role="checkbox"
+                aria-checked={active}
                 data-active={active}
                 data-dimmed={dimmed}
                 onClick={() => toggleGenre(index)}
                 className="genre-row"
               >
-                <span
-                  className="genre-dot"
-                  style={{
-                    background: genre.color,
-                    boxShadow: 'inset 1px 1px 2px rgba(255,255,255,0.85)',
-                  }}
-                  aria-hidden
-                />
-                <span className={`flex-1 truncate ${active ? 'text-[#4a3fa8]' : 'text-ink'}`}>
-                  {genre.name}
-                </span>
-                <span className="tabular-nums text-[10px] text-soft">
+                <span className="genre-dot" style={{ background: genre.color }} aria-hidden />
+                <span className="flex-1 truncate">{genre.name}</span>
+                <span className="genre-count">
                   <CountUp value={counts[index] ?? 0} />
                 </span>
               </button>
@@ -83,7 +80,28 @@ export default function StatsPanel() {
 
       <AnimatedContent className="card card-pad decade-card" delay={0.05}>
         <p className="eyebrow mb-2">Decade</p>
-        <GooeyNav items={ERA_OPTIONS} value={era} onChange={setEra} label="Decade" />
+        <div
+          className="segmented segmented-vertical"
+          role="radiogroup"
+          aria-label="Decade"
+          onKeyDown={onEraKeyDown}
+          style={{ '--i': eraIndex, '--n': ERA_OPTIONS.length } as CSSProperties}
+        >
+          <span className="segmented-thumb" aria-hidden />
+          {ERA_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={era === option.id}
+              tabIndex={era === option.id ? 0 : -1}
+              onClick={() => setEra(option.id)}
+              className="segment"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </AnimatedContent>
     </aside>
   )

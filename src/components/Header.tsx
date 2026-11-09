@@ -77,12 +77,10 @@ export default function Header() {
       <div className="brand">
         <BrandMark />
         <div className="min-w-0">
-          <h1 className="brand-title truncate font-serif text-[18px] leading-none tracking-[-0.01em] text-ink">
+          <h1 className="brand-title truncate">
             <BlurText text="Book Similarity Machine" />
           </h1>
-          <p className="brand-sub mt-1 text-[9px] uppercase tracking-[0.18em] text-soft">
-            a clay atlas of reading
-          </p>
+          <p className="brand-sub">A clay atlas of reading</p>
         </div>
       </div>
 
@@ -90,13 +88,13 @@ export default function Header() {
         <label htmlFor="atlas-search" className="sr-only">
           Search books, authors or subjects
         </label>
-        <div className="search-field clay-inset">
+        <div className="search-field surface-inset">
           <svg
             viewBox="0 0 24 24"
-            className="search-icon h-4 w-4"
+            className="search-icon h-[18px] w-[18px]"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.9"
+            strokeWidth="1.8"
             aria-hidden
           >
             <circle cx="10.8" cy="10.8" r="6.3" />
@@ -119,14 +117,14 @@ export default function Header() {
                 setQuery('')
                 inputRef.current?.focus()
               }}
-              className="grid h-7 w-7 place-items-center rounded-full text-soft hover:text-ink"
+              className="btn btn-ghost btn-icon -mr-1 h-8 w-8 min-h-8 min-w-8"
             >
               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="m6 6 12 12M18 6 6 18" strokeLinecap="round" />
               </svg>
             </button>
           ) : (
-            <span className="search-kbd" aria-hidden>
+            <span className="search-kbd" data-pulse={count > 0} aria-hidden>
               /
             </span>
           )}
@@ -147,17 +145,19 @@ export default function Header() {
                           focusBook(id)
                           inputRef.current?.blur()
                         }}
-                        className={`result-row ${id === selectedId ? 'clay-inset' : ''}`}
+                        className="result-row"
+                        data-active={id === selectedId}
                       >
                         <span
-                          className="h-2 w-2 shrink-0 rounded-full"
+                          className="genre-dot h-2.5 w-2.5"
                           style={{ background: genres[book?.g ?? 0]?.color ?? '#c9d1dd' }}
+                          aria-hidden
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12.5px] text-ink">
+                          <span className="block truncate text-[14px] text-ink">
                             {book?.t ?? `Book #${id}`}
                           </span>
-                          <span className="block truncate text-[10.5px] text-soft">
+                          <span className="muted block truncate text-[12px]">
                             {book ? `${book.a} · ${book.y}` : 'loading metadata…'}
                           </span>
                         </span>
@@ -167,24 +167,22 @@ export default function Header() {
                 })}
               </ul>
             ) : (
-              <p className="px-3 py-4 text-[12px] text-soft">
+              <p className="muted px-3 py-4 text-[13px]">
                 {searchIndexed < count && count > 0
                   ? `Indexing ${searchIndexed.toLocaleString()} of ${count.toLocaleString()} books…`
                   : 'No books match that search.'}
               </p>
             )}
-            <p className="px-3 pb-1 pt-1.5 text-[9px] uppercase tracking-[0.16em] text-soft">
-              {results.length.toLocaleString()} matches
-            </p>
+            <p className="eyebrow px-3 pb-1 pt-2">{results.length.toLocaleString()} matches</p>
           </div>
         ) : null}
       </div>
 
       <div className="header-right">
-        <div className="count-chip clay-sm">
-          <span className="font-serif text-[16px] leading-none text-ink">
+        <div className="count-chip surface-raised tabular">
+          <strong>
             <CountUp value={count} />
-          </span>
+          </strong>
           <span className="hidden sm:inline">books</span>
         </div>
 
@@ -194,13 +192,14 @@ export default function Header() {
             aria-label="Globe settings"
             aria-expanded={settingsOpen}
             onClick={() => setSettingsOpen((open) => !open)}
-            className={`grid h-10 w-10 place-items-center rounded-full text-soft ${
-              settingsOpen ? 'clay-inset' : 'clay-sm'
-            }`}
+            className={`btn btn-icon ${settingsOpen ? 'surface-inset' : 'btn-raised'}`}
           >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7">
+            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.7">
               <circle cx="12" cy="12" r="3.1" />
-              <path d="M12 3.6v2M12 18.4v2M3.6 12h2M18.4 12h2M6.1 6.1l1.4 1.4M16.5 16.5l1.4 1.4M6.1 17.9l1.4-1.4M16.5 7.5l1.4-1.4" strokeLinecap="round" />
+              <path
+                d="M12 3.6v2M12 18.4v2M3.6 12h2M18.4 12h2M6.1 6.1l1.4 1.4M16.5 16.5l1.4 1.4M6.1 17.9l1.4-1.4M16.5 7.5l1.4-1.4"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
 
@@ -228,24 +227,23 @@ function ToggleRow({
   onChange: () => void
 }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={value}
-      onClick={onChange}
-      className="settings-row"
-    >
+    <button type="button" role="switch" aria-checked={value} onClick={onChange} className="settings-row">
       <span>{label}</span>
       <span
         aria-hidden
-        className={`relative h-4 w-7 rounded-full transition-colors ${
-          value ? 'bg-[#b9aef0]' : 'bg-[#cfd6e0]'
-        }`}
+        className="relative h-5 w-9 rounded-full transition-colors"
+        style={{
+          background: value
+            ? 'linear-gradient(145deg, #7A68E8, #5B49D4)'
+            : 'linear-gradient(145deg, #E1E5EC, #F2F4F8)',
+          boxShadow: value
+            ? '0 4px 10px rgba(91,73,212,.3)'
+            : 'inset 3px 3px 6px var(--dark), inset -3px -3px 6px var(--light)',
+        }}
       >
         <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
-            value ? 'translate-x-3.5' : 'translate-x-0.5'
-          }`}
+          className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+          style={{ transform: value ? 'translateX(18px)' : 'translateX(2px)' }}
         />
       </span>
     </button>
@@ -255,20 +253,20 @@ function ToggleRow({
 function BrandMark() {
   return (
     <span
-      className="grid h-10 w-10 shrink-0 place-items-center rounded-full"
+      className="grid h-11 w-11 shrink-0 place-items-center rounded-full"
       style={{
-        background: 'radial-gradient(circle at 34% 28%, #ffffff 0%, #e6eaf1 55%, #c9d0db 100%)',
+        background: 'linear-gradient(145deg, #F7F9FC, #E0E4EB)',
         boxShadow:
-          'inset 1px 1px 2px rgba(255,255,255,0.9), inset -2px -2px 4px rgba(120,132,152,0.35), 3px 3px 8px rgba(160,170,188,0.55)',
+          '6px 6px 14px var(--dark), -6px -6px 14px var(--light), inset 1px 1px 0 rgba(255,255,255,.9)',
       }}
       aria-hidden
     >
       <svg viewBox="0 0 24 24" className="h-5 w-5">
-        <circle cx="9.4" cy="10" r="1.7" fill="#b9aef0" />
-        <circle cx="14.4" cy="8.4" r="1.25" fill="#a9cdf0" />
-        <circle cx="15.2" cy="13.6" r="1.9" fill="#f2b6cc" />
-        <circle cx="10.4" cy="14.8" r="1.3" fill="#f5cfa0" />
-        <circle cx="12.4" cy="11.8" r="1" fill="#a8dcc3" />
+        <circle cx="9.4" cy="10" r="1.7" fill="#B9AEF0" />
+        <circle cx="14.4" cy="8.4" r="1.25" fill="#A9CDF0" />
+        <circle cx="15.2" cy="13.6" r="1.9" fill="#F2B6CC" />
+        <circle cx="10.4" cy="14.8" r="1.3" fill="#F5CFA0" />
+        <circle cx="12.4" cy="11.8" r="1" fill="#A8DCC3" />
       </svg>
     </span>
   )

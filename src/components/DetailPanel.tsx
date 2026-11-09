@@ -28,11 +28,16 @@ export default function DetailPanel() {
   const genre = meta ? genres[meta.g] : null
   const cluster =
     selectedId != null && clusterOf ? clusters[clusterOf[selectedId]] : null
+  const selectedCluster = selectedId != null && clusterOf ? clusterOf[selectedId] : null
 
   const neighbours = nearby
     .slice(0, 10)
     .filter((id) => id !== selectedId)
-    .map((id) => ({ id, book: allMeta[id] }))
+    .map((id) => ({
+      id,
+      book: allMeta[id],
+      near: selectedCluster != null && clusterOf ? clusterOf[id] === selectedCluster : true,
+    }))
 
   return (
     <aside className="rail-right" data-has-selection={selectedId != null}>
@@ -40,35 +45,37 @@ export default function DetailPanel() {
         {selectedId == null ? (
           <>
             <p className="eyebrow">Selected book</p>
-            <p className="mt-3 font-serif text-[20px] leading-snug text-ink">
+            <p className="font-serif mt-3 text-[20px] leading-snug text-ink">
               Pick a book on the globe
             </p>
-            <p className="mt-2 text-[11.5px] leading-relaxed text-soft">
+            <p className="empty-state">
               Every bump is a book. Drag to rotate, scroll to zoom, or click a bump to read it and
               see the ten books closest to it.
             </p>
-            <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-soft">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#b9aef0]" aria-hidden />
-              <CountUp value={count} /> books, {clusters.length} regions
+            <div className="mt-4 flex items-center gap-2">
+              <span className="genre-dot h-1.5 w-1.5 bg-[#b9aef0]" aria-hidden />
+              <span className="eyebrow tabular">
+                <CountUp value={count} /> books · {clusters.length} regions
+              </span>
             </div>
           </>
         ) : (
           <>
-            <div className="flex items-start justify-between gap-2">
+            <div className="card-head">
               <p className="eyebrow">Selected book</p>
               <button
                 type="button"
                 onClick={() => select(null)}
                 aria-label="Close book details"
-                className="clay-sm -mt-1 grid h-8 w-8 place-items-center rounded-full text-soft hover:text-ink"
+                className="close-btn -mt-1"
               >
-                <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2">
                   <path d="m6 6 12 12M18 6 6 18" strokeLinecap="round" />
                 </svg>
               </button>
             </div>
 
-            <div className="mt-3 flex gap-3">
+            <div className="mt-4 flex gap-4">
               <div
                 className="cover"
                 style={{
@@ -83,32 +90,41 @@ export default function DetailPanel() {
               </div>
 
               <div className="min-w-0 flex-1">
-                <h2 className="font-serif text-[20px] leading-tight text-ink">
-                  {meta ? <BlurText key={selectedId} text={meta.t} /> : null}
-                </h2>
                 {meta ? (
-                  <p className="mt-1 text-[12px] text-soft">
+                  <h2 className="font-serif text-[20px] leading-tight text-ink">
+                    <BlurText key={selectedId} text={meta.t} />
+                  </h2>
+                ) : (
+                  <div className="flex flex-col gap-2 pt-1" aria-hidden>
+                    <span className="skeleton h-4 w-4/5" />
+                    <span className="skeleton h-4 w-2/3" />
+                  </div>
+                )}
+                {meta ? (
+                  <p className="muted mt-1 text-[14px]">
                     {meta.a} · {meta.y}
                   </p>
                 ) : (
-                  <div className="mt-2 h-3 w-3/5 animate-pulse rounded-full bg-[#dde3ec]" />
+                  <span className="skeleton mt-2 block h-3 w-3/5" aria-hidden />
                 )}
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {genre ? (
-                    <span
-                      className="rounded-full px-2 py-0.5 text-[10px] text-ink/80"
-                      style={{ background: rgba(colour, 0.3) }}
-                    >
+                    <span className="tag">
+                      <span
+                        className="tag-dot"
+                        style={{ background: colour }}
+                        aria-hidden
+                      />
                       {genre.name}
                     </span>
                   ) : null}
-                  {cluster ? <span className="chip">{cluster.name}</span> : null}
+                  {cluster ? <span className="tag">{cluster.name}</span> : null}
                 </div>
               </div>
             </div>
 
             {meta?.s?.length ? (
-              <div className="mt-3 flex flex-wrap gap-1">
+              <div className="mt-3 flex flex-wrap gap-1.5">
                 {meta.s.slice(0, 4).map((subject) => (
                   <span key={subject} className="chip">
                     {subject}
@@ -117,14 +133,14 @@ export default function DetailPanel() {
               </div>
             ) : null}
 
-            <div className="mt-4 flex flex-col gap-2">
+            <div className="mt-5 flex flex-col gap-2">
               <Magnet className="w-full">
                 <button
                   type="button"
                   onClick={() => {
                     if (selectedId != null) focusBook(selectedId)
                   }}
-                  className="clay-sm h-9 w-full rounded-full text-[12px] text-ink hover:text-[#4a3fa8]"
+                  className="btn btn-primary w-full"
                 >
                   Show nearby books
                 </button>
@@ -136,7 +152,7 @@ export default function DetailPanel() {
                     if (cluster) flyToCluster(cluster.id)
                   }}
                   disabled={!cluster}
-                  className="clay-sm h-9 w-full rounded-full text-[12px] text-ink hover:text-[#4a3fa8] disabled:opacity-45"
+                  className="btn btn-raised w-full"
                 >
                   Zoom to cluster
                 </button>
@@ -147,47 +163,61 @@ export default function DetailPanel() {
       </AnimatedContent>
 
       <AnimatedContent className="card nearby-card" delay={0.06}>
-        <div className="flex items-baseline justify-between gap-2 px-1">
+        <div className="card-head">
           <p className="eyebrow">Nearby books</p>
-          <span className="text-[10px] tabular-nums text-soft">
+          <span className="genre-count">
             {selectedId == null ? '—' : nearbyLoading ? '·' : neighbours.length}
           </span>
         </div>
 
         {selectedId == null ? (
-          <p className="px-1 pt-3 text-[11.5px] leading-relaxed text-soft">
+          <p className="empty-state">
             Choose a book and its ten nearest neighbours appear here, threaded to it on the globe.
           </p>
         ) : nearbyLoading ? (
-          <p className="px-1 pt-3 text-[11px] text-soft">Reading the neighbour graph…</p>
+          <div className="mt-3 flex flex-col gap-3" aria-hidden>
+            {[0, 1, 2, 3].map((row) => (
+              <div key={row} className="flex items-center gap-3">
+                <span className="skeleton h-14 w-10 rounded-[8px]" />
+                <span className="flex-1">
+                  <span className="skeleton block h-3.5 w-3/4" />
+                  <span className="skeleton mt-2 block h-3 w-1/2" />
+                </span>
+              </div>
+            ))}
+            <p className="sr-only">Reading the neighbour graph…</p>
+          </div>
         ) : neighbours.length ? (
           <AnimatedList
             ariaLabel="Nearby books"
             className="nearby-list thin-scrollbar"
+            rowClassName="nearby-row"
             items={neighbours.map((entry) => ({
               id: entry.id,
               content: (
-                <div className="flex items-center gap-2">
+                <>
                   <span
-                    className="h-7 w-[20px] shrink-0 rounded-[4px]"
+                    className="cover cover-sm"
                     style={{
                       background: `linear-gradient(150deg, ${rgba(genreTint(entry.book?.g ?? 0), 0.9)}, ${rgba(
                         genreTint(entry.book?.g ?? 0),
                         0.45,
                       )})`,
-                      boxShadow: 'inset 1px 1px 0 rgba(255,255,255,.8)',
                     }}
                     aria-hidden
-                  />
+                  >
+                    {initials(entry.book?.t ?? '')}
+                  </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] text-ink">
+                    <span className="block truncate text-[16px] leading-tight text-ink">
                       {entry.book?.t ?? `Book #${entry.id}`}
                     </span>
-                    <span className="block truncate text-[10px] text-soft">
+                    <span className="muted block truncate text-[12px]">
                       {entry.book ? `${entry.book.a} · ${entry.book.y}` : 'metadata pending'}
                     </span>
                   </span>
-                </div>
+                  <span className="distance-chip">{entry.near ? 'Near' : 'Other region'}</span>
+                </>
               ),
             }))}
             onSelect={(id) => {
@@ -196,7 +226,7 @@ export default function DetailPanel() {
             }}
           />
         ) : (
-          <p className="px-1 pt-3 text-[11px] text-soft">No neighbours found for this book.</p>
+          <p className="empty-state">No neighbours found for this book.</p>
         )}
       </AnimatedContent>
     </aside>
