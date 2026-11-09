@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { DIM_ALPHA, inEra } from '../data/format'
+import { DIM_ALPHA } from '../data/format'
 import type {
   AtlasPoints,
   BookMeta,
@@ -23,7 +23,6 @@ export interface AtlasState {
   metaLoaded: number
   searchIndexed: number
   points: AtlasPoints | null
-  /** Nearest continent (cluster) for every book, derived once on load. */
   clusterOf: Uint8Array | null
   meta: (BookMeta | null)[]
 
@@ -31,6 +30,7 @@ export interface AtlasState {
   results: number[]
   activeGenres: number[]
   era: Era
+  yearRange: [number, number]
 
   alphas: Uint8Array
   alphaVersion: number
@@ -46,7 +46,6 @@ export interface AtlasState {
   showLinks: boolean
   autoRotate: boolean
   focus: Focus | null
-  /** Continent name shown (decrypted) while the camera flies to it. */
   clusterFlash: { name: string; nonce: number } | null
 
   setManifest: (manifest: Manifest, clusters: Cluster[]) => void
@@ -60,6 +59,7 @@ export interface AtlasState {
   setResults: (ids: number[]) => void
   toggleGenre: (genre: number) => void
   setEra: (era: Era) => void
+  setYearRange: (range: [number, number]) => void
   resetFilters: () => void
 
   select: (id: number | null) => void
@@ -85,7 +85,7 @@ export const ERA_OPTIONS: { id: Era; label: string }[] = [
 ]
 
 function buildAlphas(state: AtlasState): { alphas: Uint8Array; visibleCount: number } {
-  const { count, points, query, results, activeGenres, era, selectedId, nearby } = state
+  const { count, points, query, results, activeGenres, yearRange, selectedId, nearby } = state
   const alphas = new Uint8Array(count).fill(255)
   if (!points || count === 0) return { alphas, visibleCount: 0 }
 
@@ -97,14 +97,13 @@ function buildAlphas(state: AtlasState): { alphas: Uint8Array; visibleCount: num
   for (let i = 0; i < count; i++) {
     const matches =
       (!genreSet || genreSet.has(points.attrs.genre[i])) &&
-      inEra(points.attrs.year[i], era) &&
+      points.attrs.year[i] >= yearRange[0] &&
+      points.attrs.year[i] <= yearRange[1] &&
       (!hasQuery || (resultSet ? resultSet.has(i) : false))
     if (matches) visibleCount++
     else alphas[i] = DIM_ALPHA
   }
 
-  // Selection focuses the globe: the chosen book and its neighbours stay at full
-  // strength while everything else recedes into the clay.
   if (selectedId != null && selectedId < count) {
     for (let i = 0; i < count; i++) {
       if (i !== selectedId) alphas[i] = Math.min(alphas[i], 196)
@@ -139,6 +138,7 @@ export const useAtlas = create<AtlasState>()((set, get) => ({
   results: [],
   activeGenres: [],
   era: 'all',
+  yearRange: [1800, 2026],
 
   alphas: new Uint8Array(0),
   alphaVersion: 0,
@@ -229,8 +229,24 @@ export const useAtlas = create<AtlasState>()((set, get) => ({
 
   setEra: (era) => set((state) => apply(state, { era })),
 
+  setYearRange: (range) =>
+    set((state) =>
+      apply(state, {
+        yearRange: range,
+        era: range[0] <= 1800 && range[1] >= 2026 ? 'all' : 'custom',
+      }),
+    ),
+
   resetFilters: () =>
-    set((state) => apply(state, { query: '', results: [], activeGenres: [], era: 'all' })),
+    set((state) =>
+      apply(state, {
+        query: '',
+        results: [],
+        activeGenres: [],
+        era: 'all',
+        yearRange: [1800, 2026],
+      }),
+    ),
 
   select: (id) => {
     set((state) =>
@@ -269,7 +285,7 @@ export const useAtlas = create<AtlasState>()((set, get) => ({
     set({
       focus: {
         dir: cluster.centroid,
-        zoom: 0.8,
+        zoom: 0.94,
         nonce: focusNonce,
       },
       clusterFlash: { name: cluster.name, nonce: focusNonce },
@@ -285,7 +301,7 @@ export const useAtlas = create<AtlasState>()((set, get) => ({
     const len = Math.hypot(x, y, z) || 1
     focusNonce += 1
     set({
-      focus: { dir: [x / len, y / len, z / len], zoom: 0.72, nonce: focusNonce },
+      focus: { dir: [x / len, y / len, z / len], zoom: 0.95, nonce: focusNonce },
     })
   },
 
