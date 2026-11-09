@@ -9,19 +9,24 @@ export interface AnimatedListItem {
 interface AnimatedListProps {
   items: AnimatedListItem[]
   onSelect: (id: number) => void
+  onHover?: (id: number | null) => void
   ariaLabel: string
   className?: string
   /** Class applied to every row (e.g. "nearby-row"). */
   rowClassName?: string
+  /** Row controlled from outside (e.g. the hovered dot). */
+  highlightId?: number | null
 }
 
-/** Staggered entry plus ArrowUp/ArrowDown/Home/End/Enter keyboard selection. */
+/** Staggered entry, two-way hover and ArrowUp/ArrowDown/Home/End/Enter selection. */
 export default function AnimatedList({
   items,
   onSelect,
+  onHover,
   ariaLabel,
   className,
   rowClassName,
+  highlightId,
 }: AnimatedListProps) {
   const [active, setActive] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
@@ -51,34 +56,41 @@ export default function AnimatedList({
       aria-label={ariaLabel}
       tabIndex={0}
       onKeyDown={onKeyDown}
-      onFocus={() => {
-        const node = listRef.current?.querySelector<HTMLElement>('[data-active="true"]')
-        node?.scrollIntoView({ block: 'nearest' })
-      }}
+      onMouseLeave={() => onHover?.(null)}
       className={className}
     >
-      {items.map((item, index) => (
-        <motion.div
-          key={item.id}
-          role="option"
-          aria-selected={index === active}
-          data-active={index === active}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.32, delay: Math.min(index * 0.04, 0.32), ease: 'easeOut' }}
-          onMouseEnter={() => setActive(index)}
-          onClick={() => onSelect(item.id)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              onSelect(item.id)
-            }
-          }}
-          className={rowClassName ?? 'cursor-pointer rounded-2xl px-2 py-1.5 transition-colors'}
-        >
-          {item.content}
-        </motion.div>
-      ))}
+      {items.map((item, index) => {
+        const highlighted = index === active || item.id === highlightId
+        return (
+          <motion.div
+            key={item.id}
+            role="option"
+            aria-selected={index === active}
+            data-active={index === active}
+            data-highlight={item.id === highlightId}
+            data-book-row={item.id}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.32, delay: Math.min(index * 0.04, 0.32), ease: 'easeOut' }}
+            onMouseEnter={() => {
+              setActive(index)
+              onHover?.(item.id)
+            }}
+            onClick={() => onSelect(item.id)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onSelect(item.id)
+              }
+            }}
+            className={`${rowClassName ?? 'cursor-pointer rounded-2xl px-2 py-1.5 transition-colors'}${
+              highlighted ? ' is-highlighted' : ''
+            }`}
+          >
+            {item.content}
+          </motion.div>
+        )
+      })}
     </div>
   )
 }
