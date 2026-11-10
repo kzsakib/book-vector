@@ -77,10 +77,10 @@ export default function DetailPanel() {
       <AnimatedContent className="card selected-card">
         {selectedId == null ? (
           <>
-            <p className="eyebrow">No selection</p>
-            <h2 className="font-serif mt-2 text-[22px] leading-tight text-ink">Start here</h2>
+            <p className="eyebrow">Start here</p>
+            <h2 className="font-serif mt-2 text-[22px] leading-tight text-ink">Pick a book</h2>
             <p className="mt-2 text-[14px] leading-relaxed text-ink-2">
-              Pick a book and the globe keeps only its ten closest neighbours in view.
+              Choose any dot and the globe keeps only its ten closest neighbours in view.
             </p>
 
             <div className="starter-list">
@@ -99,9 +99,7 @@ export default function DetailPanel() {
                   >
                     <span
                       className="cover cover-sm"
-                      style={{
-                        background: `linear-gradient(150deg, ${rgba(tint, 0.92)}, ${rgba(tint, 0.5)})`,
-                      }}
+                      style={{ background: `linear-gradient(150deg, ${rgba(tint, 0.92)}, ${rgba(tint, 0.5)})` }}
                       aria-hidden
                     >
                       {initials(book?.t ?? '')}
@@ -140,13 +138,7 @@ export default function DetailPanel() {
                 aria-label="Close book details"
                 className="close-btn -mt-1"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2">
                   <path d="m6 6 12 12M18 6 6 18" strokeLinecap="round" />
                 </svg>
               </button>
@@ -233,83 +225,78 @@ export default function DetailPanel() {
         )}
       </AnimatedContent>
 
-      <AnimatedContent className="card nearby-card" delay={0.06}>
-        <div className="card-head">
-          <p className="eyebrow">Nearby books</p>
-          {selectedId != null ? (
+      {selectedId != null ? (
+        <AnimatedContent className="card nearby-card" delay={0.06}>
+          <div className="card-head">
+            <p className="eyebrow">Nearby books</p>
             <span className="genre-count">{nearbyLoading ? '·' : neighbours.length}</span>
-          ) : null}
-        </div>
+          </div>
 
-        <div ref={listRef} className="min-h-0 flex-1">
-          {selectedId == null ? (
-            <p className="empty-state">
-              Choose a book and its ten nearest neighbours appear here, numbered to match the
-              badges on the globe.
-            </p>
-          ) : nearbyLoading ? (
-            <div className="mt-3 flex flex-col gap-3" aria-hidden>
-              {[0, 1, 2, 3].map((row) => (
-                <div key={row} className="flex items-center gap-3">
-                  <span className="skeleton h-10 w-10 rounded-full" />
-                  <span className="skeleton h-14 w-10 rounded-[8px]" />
-                  <span className="flex-1">
-                    <span className="skeleton block h-3.5 w-3/4" />
-                    <span className="skeleton mt-2 block h-3 w-1/2" />
-                  </span>
-                </div>
-              ))}
-              <p className="sr-only">Reading the neighbour graph…</p>
-            </div>
-          ) : neighbours.length ? (
-            <AnimatedList
-              ariaLabel="Nearby books"
-              className="nearby-list thin-scrollbar"
-              rowClassName="nearby-row"
-              highlightId={hoveredId}
-              items={neighbours.map((entry) => ({
-                id: entry.id,
-                content: (
-                  <>
-                    <span className="rank-badge" aria-hidden>
-                      {entry.rank}
+          <div ref={listRef} className="min-h-0 flex-1">
+            {nearbyLoading ? (
+              <div className="mt-3 flex flex-col gap-3" aria-hidden>
+                {[0, 1, 2, 3].map((row) => (
+                  <div key={row} className="flex items-center gap-3">
+                    <span className="skeleton h-10 w-10 rounded-full" />
+                    <span className="skeleton h-14 w-10 rounded-[8px]" />
+                    <span className="flex-1">
+                      <span className="skeleton block h-3.5 w-3/4" />
+                      <span className="skeleton mt-2 block h-3 w-1/2" />
                     </span>
-                    <span
-                      className="cover cover-sm"
-                      style={{
-                        background: `linear-gradient(150deg, ${rgba(
-                          genreTint(entry.book?.g ?? 0),
-                          0.9,
-                        )}, ${rgba(genreTint(entry.book?.g ?? 0), 0.45)})`,
-                      }}
-                      aria-hidden
-                    >
-                      {initials(entry.book?.t ?? '')}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[16px] leading-tight text-ink">
-                        {entry.book?.t ?? `Book #${entry.id}`}
+                  </div>
+                ))}
+                <p className="sr-only">Reading the neighbour graph…</p>
+              </div>
+            ) : neighbours.length ? (
+              <AnimatedList
+                ariaLabel="Nearby books"
+                className="nearby-list thin-scrollbar"
+                rowClassName="nearby-row"
+                highlightId={hoveredId}
+                items={neighbours.map((entry) => ({
+                  id: entry.id,
+                  content: (
+                    <>
+                      <span className="rank-badge" aria-hidden>
+                        {entry.rank}
                       </span>
-                      <span className="muted block truncate text-[12px]">
-                        {entry.book ? `${entry.book.a} · ${entry.book.y}` : 'metadata pending'}
+                      <span
+                        className="cover cover-sm"
+                        style={{
+                          background: `linear-gradient(150deg, ${rgba(
+                            genreTint(entry.book?.g ?? 0),
+                            0.9,
+                          )}, ${rgba(genreTint(entry.book?.g ?? 0), 0.45)})`,
+                        }}
+                        aria-hidden
+                      >
+                        {initials(entry.book?.t ?? '')}
                       </span>
-                      {entry.other ? <span className="distance-chip">Other region</span> : null}
-                    </span>
-                    <SimilarityRing score={entry.score} />
-                  </>
-                ),
-              }))}
-              onSelect={(id) => {
-                select(id)
-                focusBook(id)
-              }}
-              onHover={(id) => hover(id)}
-            />
-          ) : (
-            <p className="empty-state">No neighbours found for this book.</p>
-          )}
-        </div>
-      </AnimatedContent>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[16px] leading-tight text-ink">
+                          {entry.book?.t ?? `Book #${entry.id}`}
+                        </span>
+                        <span className="muted block truncate text-[12px]">
+                          {entry.book ? `${entry.book.a} · ${entry.book.y}` : 'metadata pending'}
+                        </span>
+                        {entry.other ? <span className="distance-chip">Other region</span> : null}
+                      </span>
+                      <SimilarityRing score={entry.score} />
+                    </>
+                  ),
+                }))}
+                onSelect={(id) => {
+                  select(id)
+                  focusBook(id)
+                }}
+                onHover={(id) => hover(id)}
+              />
+            ) : (
+              <p className="empty-state">No neighbours found for this book.</p>
+            )}
+          </div>
+        </AnimatedContent>
+      ) : null}
     </aside>
   )
 }
@@ -320,7 +307,7 @@ function SimilarityRing({ score }: { score: number }) {
   const filled = (score / 100) * circumference
   return (
     <span className="sim-ring" role="img" aria-label={`${score} percent similar`}>
-      <svg viewBox="0 0 26 26" aria-hidden>
+      <svg viewBox="0 0 32 32" aria-hidden>
         <circle cx="13" cy="13" r={radius} className="sim-ring-track" />
         <circle
           cx="13"
