@@ -109,6 +109,7 @@ export default function ArcLinks() {
   const hoveredId = useAtlas((state) => state.hoveredId)
   const camera = useThree((state) => state.camera)
   const size = useThree((state) => state.size)
+  const invalidate = useThree((state) => state.invalidate)
   const badgeNodes = useRef(new Map<number, HTMLDivElement>())
 
   const registerBadge = useCallback((rank: number, node: HTMLDivElement | null) => {
@@ -116,7 +117,7 @@ export default function ArcLinks() {
     else badgeNodes.current.delete(rank)
   }, [])
 
-  // Badges are 18px, so relax overlapping pairs to a 24px minimum over six
+  // Badges are 18px, so relax overlapping pairs to a 30px minimum over six
   // passes and clamp them inside the stage.
   useFrame(() => {
     const arcsShown = shown?.arcs
@@ -142,13 +143,13 @@ export default function ArcLinks() {
           let dx = b.x + b.dx - (a.x + a.dx)
           let dy = b.y + b.dy - (a.y + a.dy)
           let distance = Math.hypot(dx, dy)
-          if (distance >= 24) continue
+          if (distance >= 30) continue
           if (distance < 0.001) {
             dx = 1
             dy = (j - i) * 0.5
             distance = Math.hypot(dx, dy)
           }
-          const push = (24 - distance) / 2
+          const push = (30 - distance) / 2
           const ux = dx / distance
           const uy = dy / distance
           a.dx -= ux * push
@@ -161,11 +162,13 @@ export default function ArcLinks() {
 
     for (const item of items) {
       if (!item.el) continue
-      const x = Math.min(Math.max(item.x + item.dx, 20), size.width - 20)
-      const y = Math.min(Math.max(item.y + item.dy, 20), size.height - 20)
+      const x = Math.min(Math.max(item.x + item.dx, 26), size.width - 26)
+      const y = Math.min(Math.max(item.y + item.dy, 26), size.height - 26)
       item.el.style.transform = `translate(${(x - item.x).toFixed(1)}px, ${(y - item.y).toFixed(1)}px)`
       item.el.style.opacity = item.facing > 0.12 ? '1' : '0'
     }
+
+    if (performance.now() < settleUntil.current) invalidate()
   })
 
   // Hover alone gets three thin spokes, so a dot explains its neighbours
@@ -190,6 +193,13 @@ export default function ArcLinks() {
   }, [points, hoveredId])
 
   const [shown, setShown] = useState<{ arcs: ArcDatum[]; start: number } | null>(null)
+  const settleUntil = useRef(0)
+
+  // Demand rendering idles once the fly-to lands, which would skip the badge
+  // relaxation entirely; keep frames coming for a moment after new arcs mount.
+  useEffect(() => {
+    settleUntil.current = performance.now() + 1600
+  }, [shown])
 
   useEffect(() => {
     if (!arcs.length) {
