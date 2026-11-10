@@ -20,6 +20,7 @@ const VERTEX = /* glsl */ `
   varying vec3 vColor;
   varying float vState;
   varying float vFade;
+  varying float vHover;
 
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -31,11 +32,12 @@ const VERTEX = /* glsl */ `
     else if (aState > 1.5) stateSize = 1.9;
     else if (aState > 0.5) stateSize = 1.4;
 
-    float base = mix(1.25, 2.1, aSize);
-    base *= 1.0 + step(abs(aId - uHover), 0.5) * 0.5;
+    // Popularity only nudges size by ±20%.
+    float base = mix(0.8, 1.2, aSize);
+    base *= 1.0 + step(abs(aId - uHover), 0.5) * 0.25;
 
-    // Screen-sized points: constant clay pebbles at any camera distance.
-    float size = clamp(base * stateSize * uScale / max(0.001, -mv.z), 5.0, 16.0) * uDpr;
+    // 3.5–9px at the framing distance, up to 12px at the closest clamp.
+    float size = clamp(base * stateSize * uScale / max(0.001, -mv.z), 3.5, 12.0) * uDpr;
     if (facing < -0.05) size = 0.0;
 
     gl_PointSize = size;
@@ -44,6 +46,7 @@ const VERTEX = /* glsl */ `
     vFade = smoothstep(-0.05, 0.28, facing) * uReveal;
     vColor = aColor;
     vState = aState;
+    vHover = step(abs(aId - uHover), 0.5);
   }
 `
 
@@ -51,6 +54,7 @@ const FRAGMENT = /* glsl */ `
   varying vec3 vColor;
   varying float vState;
   varying float vFade;
+  varying float vHover;
 
   void main() {
     vec2 uv = gl_PointCoord * 2.0 - 1.0;
@@ -58,27 +62,37 @@ const FRAGMENT = /* glsl */ `
     if (r2 > 1.0) discard;
 
     float radius = sqrt(r2);
-    float edge = smoothstep(1.0, 0.88, radius);
+    // Anti-aliased silhouette.
+    float edge = smoothstep(1.0, 0.90, radius);
 
     vec3 n = vec3(uv.x, -uv.y, sqrt(max(0.0, 1.0 - r2)));
     vec3 lightDir = normalize(vec3(-0.5, 0.6, 0.62));
     float diffuse = max(dot(n, lightDir), 0.0);
     float spec = pow(max(dot(reflect(-lightDir, n), vec3(0.0, 0.0, 1.0)), 0.0), 24.0);
-    float rim = smoothstep(0.5, 1.0, n.x * -0.45 + n.y * 0.7 + 0.25);
-
-    vec3 base = vColor;
-    float alpha = vFade * edge;
+    // Sit the dot on the sphere: 12% of the sphere colour in every dot.
+    vec3 base = mix(vColor, vec3(0.867, 0.886, 0.918), 0.12);
+    float alpha = vFade * edge * 0.92;
 
     if (vState > 2.5) {
+      // Dimmed: desaturated, translucent, slightly smaller.
       base = mix(base, vec3(0.73, 0.75, 0.79), 0.5);
-      alpha *= 0.22;
+      alpha *= 0.18;
     }
 
-    vec3 colour = base * (0.74 + 0.55 * diffuse) + vec3(0.3) * spec;
-    colour += rim * 0.14;
-    colour *= mix(0.9, 1.0, smoothstep(0.82, 1.0, radius));
+    // Gentle lighting, no rim glow; a slightly darker ring in the same hue.
+    vec3 colour = base * (0.80 + 0.20 * diffuse) + vec3(0.08) * spec;
+    float edgeRing = smoothstep(0.84, 0.93, radius) * (1.0 - smoothstep(0.95, 1.0, radius));
+    colour = mix(colour, base * 0.82, edgeRing);
+
+    // Hover: a crisp white ring, no glow.
+    float hoverRing = smoothstep(0.66, 0.82, radius) * (1.0 - smoothstep(0.88, 0.97, radius));
+    colour = mix(colour, vec3(1.0), hoverRing * vHover);
+    alpha = max(alpha, hoverRing * vHover);
 
     gl_FragColor = vec4(colour, alpha);
+
+    // Hex colours arrive linear; convert back for the sRGB canvas.
+    #include <colorspace_fragment>
   }
 `
 
@@ -89,9 +103,9 @@ const STATE_DIMMED = 3
 
 /**
  * All books in one THREE.Points draw call with a shaded-sphere impostor.
- * Point size is clamped in screen space, so zooming keeps 5–16px pebbles
- * instead of cones that merge into clutter. Selection changes touch only the
- * affected state values.
+ * Point size is clamped in screen space, so zooming keeps 3.5–12px pebbles
+ * instead of cones that merge into clutter. Selection/neighbour/hover changes
+ * touch only the affected state values, never the whole buffer.
  */
 export default function BookDots() {
   const points = useAtlas((state) => state.points)
@@ -108,6 +122,7 @@ export default function BookDots() {
 
   const states = useRef<Uint8Array | null>(null)
   const reveal = useRef(0)
+  const hoverScale = useRef(0)
 
   const geometry = useMemo(() => {
     if (!points) return null
@@ -128,6 +143,7 @@ export default function BookDots() {
       positions[i * 3 + 2] = (z / length) * SPHERE_RADIUS * 1.003
 
       colour.set(genreTint(points.attrs.genre[i]))
+      // 6% deterministic lightness jitter gives the clusters texture.
       const jitter = (((i * 2654435761) % 1000) / 1000 - 0.5) * 0.12
       colour.offsetHSL(0, 0.02, jitter)
       colours[i * 3] = colour.r
@@ -162,6 +178,7 @@ export default function BookDots() {
         transparent: true,
         depthWrite: false,
         depthTest: true,
+        toneMapped: false,
       }),
     [],
   )
@@ -171,11 +188,12 @@ export default function BookDots() {
 
   useLayoutEffect(() => {
     if (!geometry) return
-    material.uniforms.uScale.value = 54 * (size.height / 640)
+    material.uniforms.uScale.value = 46 * (size.height / 640)
     material.uniforms.uDpr.value = Math.min(2, dpr)
     invalidate()
   }, [geometry, material, size.height, dpr, invalidate])
 
+  // Only the handful of books whose role changed get written back.
   useLayoutEffect(() => {
     if (!geometry || !count) return
     const attribute = geometry.getAttribute('aState') as THREE.BufferAttribute
@@ -197,6 +215,12 @@ export default function BookDots() {
       last = Math.max(last, i)
     }
 
+    if (selectedId != null && selectedId < count && next[selectedId] !== STATE_SELECTED) {
+      next[selectedId] = STATE_SELECTED
+      first = Math.min(first, selectedId)
+      last = Math.max(last, selectedId)
+    }
+
     if (last >= 0) {
       const array = attribute.array as Uint8Array
       array.set(next)
@@ -212,8 +236,14 @@ export default function BookDots() {
     material.uniforms.uReveal.value = goalReveal
 
     const goalHover = hoveredId != null ? hoveredId : -1
-    if (material.uniforms.uHover.value !== goalHover) {
+    const current = material.uniforms.uHover.value as number
+    if (current !== goalHover) {
       material.uniforms.uHover.value = goalHover
+      invalidate()
+    }
+    const scaleGoal = hoveredId != null ? 1 : 0
+    if (Math.abs(hoverScale.current - scaleGoal) > 0.01) {
+      hoverScale.current += (scaleGoal - hoverScale.current) * Math.min(1, delta / 0.18)
       invalidate()
     }
     if (reveal.current < 1) invalidate()
