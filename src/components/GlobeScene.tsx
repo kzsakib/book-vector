@@ -128,6 +128,7 @@ function Scene() {
         />
       </Environment>
 
+      <FillLight />
       <Rings />
       <Graticule />
       <Globe />
@@ -160,6 +161,23 @@ function Scene() {
       />
     </>
   )
+}
+
+/**
+ * Camera-relative fill: without it, orbiting to a book on the far side leaves
+ * the sphere almost unlit, because every light is fixed in world space.
+ */
+function FillLight() {
+  const light = useRef<THREE.DirectionalLight>(null)
+  const camera = useThree((state) => state.camera)
+
+  useFrame(() => {
+    if (!light.current) return
+    light.current.position.copy(camera.position).multiplyScalar(1.4)
+    light.current.position.y += 3
+  })
+
+  return <directionalLight ref={light} intensity={1.25} color="#FFF6EC" />
 }
 
 /** Two faint decorative rings, camera-locked behind the globe. */
