@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Html, Line } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -33,7 +33,10 @@ function unitAt(positions: Float32Array, id: number): THREE.Vector3 {
   ).normalize()
 }
 
-/** Quadratic arc lifted by sin(pi t) * 0.08 * radius, sampled for a gradient. */
+/**
+ * Quadratic arc lifted by sin(pi t) * 0.08 * radius (the drei quadratic
+ * equivalent, sampled so each stroke can carry a vertex gradient).
+ */
 function arcBetween(from: THREE.Vector3, to: THREE.Vector3): THREE.Vector3[] {
   const angle = from.angleTo(to)
   const lift = SPHERE_RADIUS * (0.08 + 0.035 * (1 - angle / Math.PI))
@@ -46,20 +49,23 @@ function arcBetween(from: THREE.Vector3, to: THREE.Vector3): THREE.Vector3[] {
   const steps = 36
   for (let i = 0; i <= steps; i++) {
     const t = i / steps
-    points.push(
-      new THREE.Vector3()
-        .copy(from)
-        .multiplyScalar((1 - t) * (1 - t))
-        .addScaledVector(control, 2 * (1 - t) * t)
-        .addScaledVector(to, t * t)
-        .normalize()
-        .multiplyScalar(SPHERE_RADIUS * 1.004 + Math.sin(Math.PI * t) * lift),
-    )
+    const p = new THREE.Vector3()
+      .copy(from)
+      .multiplyScalar((1 - t) * (1 - t))
+      .addScaledVector(control, 2 * (1 - t) * t)
+      .addScaledVector(to, t * t)
+      .normalize()
+      .multiplyScalar(SPHERE_RADIUS * 1.004 + Math.sin(Math.PI * t) * lift)
+    points.push(p)
   }
   return points
 }
 
-/** Only the interacting book produces lines: ten labelled spokes, or three on hover. */
+/**
+ * Only the book you are interacting with produces lines: ten labelled spokes
+ * from the selection, opacity scaled by similarity, dashed when the neighbour
+ * lives more than 60° away. No ambient threads, so no hairball.
+ */
 export default function ArcLinks() {
   const points = useAtlas((state) => state.points)
   const selectedId = useAtlas((state) => state.selectedId)
@@ -83,6 +89,7 @@ export default function ArcLinks() {
       const colours = curve.map((_, i) =>
         fromColour.clone().lerp(toColour, i / (curve.length - 1)),
       )
+      // Similarity drives opacity: 0.35 at a 0.35 cosine, 0.95 at 0.9.
       const strength = Math.min(1, Math.max(0, (cosine - 0.35) / 0.55))
       return {
         id,
@@ -100,7 +107,69 @@ export default function ArcLinks() {
   }, [points, selectedId, nearby])
 
   const hoveredId = useAtlas((state) => state.hoveredId)
+  const camera = useThree((state) => state.camera)
+  const size = useThree((state) => state.size)
+  const badgeNodes = useRef(new Map<number, HTMLDivElement>())
 
+  const registerBadge = useCallback((rank: number, node: HTMLDivElement | null) => {
+    if (node) badgeNodes.current.set(rank, node)
+    else badgeNodes.current.delete(rank)
+  }, [])
+
+  // Badges are 18px, so relax overlapping pairs to a 24px minimum over six
+  // passes and clamp them inside the stage.
+  useFrame(() => {
+    const arcsShown = shown?.arcs
+    if (!arcsShown?.length) return
+    const view = camera.position.clone().normalize()
+    const items = arcsShown.map((arc) => {
+      const projected = arc.end.clone().project(camera)
+      return {
+        el: badgeNodes.current.get(arc.rank),
+        x: (projected.x * 0.5 + 0.5) * size.width,
+        y: (-projected.y * 0.5 + 0.5) * size.height,
+        dx: 0,
+        dy: 0,
+        facing: arc.normal.dot(view),
+      }
+    })
+
+    for (let pass = 0; pass < 6; pass++) {
+      for (let i = 0; i < items.length; i++) {
+        for (let j = i + 1; j < items.length; j++) {
+          const a = items[i]
+          const b = items[j]
+          let dx = b.x + b.dx - (a.x + a.dx)
+          let dy = b.y + b.dy - (a.y + a.dy)
+          let distance = Math.hypot(dx, dy)
+          if (distance >= 24) continue
+          if (distance < 0.001) {
+            dx = 1
+            dy = (j - i) * 0.5
+            distance = Math.hypot(dx, dy)
+          }
+          const push = (24 - distance) / 2
+          const ux = dx / distance
+          const uy = dy / distance
+          a.dx -= ux * push
+          a.dy -= uy * push
+          b.dx += ux * push
+          b.dy += uy * push
+        }
+      }
+    }
+
+    for (const item of items) {
+      if (!item.el) continue
+      const x = Math.min(Math.max(item.x + item.dx, 20), size.width - 20)
+      const y = Math.min(Math.max(item.y + item.dy, 20), size.height - 20)
+      item.el.style.transform = `translate(${(x - item.x).toFixed(1)}px, ${(y - item.y).toFixed(1)}px)`
+      item.el.style.opacity = item.facing > 0.12 ? '1' : '0'
+    }
+  })
+
+  // Hover alone gets three thin spokes, so a dot explains its neighbours
+  // before anything is selected.
   const hoverArcs = useMemo(() => {
     if (!points || hoveredId == null) return []
     const total = points.positions.length / 3
@@ -134,12 +203,29 @@ export default function ArcLinks() {
 
   return (
     <group renderOrder={3}>
-      {shown?.arcs.map((arc) => (
-        <group key={`${shown.start}-${arc.id}`}>
-          <Arc arc={arc} start={shown.start} />
-          <Badge position={arc.end} normal={arc.normal} rank={arc.rank} colour={arc.colour} />
-        </group>
-      ))}
+      {shown?.arcs.map((arc) => {
+        const anchor = arc.end.clone().multiplyScalar(1.06)
+        return (
+          <group key={`${shown.start}-${arc.id}`}>
+            <Arc arc={arc} start={shown.start} />
+            <Line
+              points={[arc.end, anchor]}
+              color={arc.colour}
+              lineWidth={1}
+              transparent
+              opacity={0.5}
+              depthWrite={false}
+              renderOrder={3}
+            />
+            <Badge
+              position={anchor}
+              rank={arc.rank}
+              colour={arc.colour}
+              register={registerBadge}
+            />
+          </group>
+        )
+      })}
       {hoverArcs.map((arc) => (
         <Line
           key={`hover-${hoveredId}-${arc.id}`}
@@ -198,23 +284,21 @@ function Arc({ arc, start }: { arc: ArcDatum; start: number }) {
 /** Numbered badge matching the nearby list row, faded when facing away. */
 function Badge({
   position,
-  normal,
   rank,
   colour,
+  register,
 }: {
   position: THREE.Vector3
-  normal: THREE.Vector3
   rank: number
   colour: string
+  register: (rank: number, node: HTMLDivElement | null) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
 
-  useFrame(({ camera }) => {
-    const node = ref.current
-    if (!node) return
-    const facing = normal.dot(camera.position.clone().normalize())
-    node.style.opacity = facing > 0.12 ? '1' : '0'
-  })
+  useEffect(() => {
+    register(rank, ref.current)
+    return () => register(rank, null)
+  }, [rank, register])
 
   return (
     <Html position={position} center zIndexRange={[18, 8]} style={{ pointerEvents: 'none' }}>

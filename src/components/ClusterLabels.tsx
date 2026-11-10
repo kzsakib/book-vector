@@ -19,12 +19,17 @@ interface LabelDatum {
 
 const LABEL_RADIUS = SPHERE_RADIUS * 1.002
 
-/** Letterpress pills: projection, horizon fading and collision culling in the loop. */
+/**
+ * Letterpress continent labels. Projection, horizon fading and screen-box
+ * collision culling all happen in the render loop (never in React state), so
+ * labels stay readable and never spill past the globe's silhouette.
+ */
 export default function ClusterLabels() {
   const clusters = useAtlas((state) => state.clusters)
   const genres = useAtlas((state) => state.genres)
   const showLabels = useAtlas((state) => state.showLabels)
   const activeGenres = useAtlas((state) => state.activeGenres)
+  const selectedId = useAtlas((state) => state.selectedId)
 
   const [tier, setTier] = useState<'genre' | 'cluster'>('genre')
   const tierRef = useRef<'genre' | 'cluster'>('genre')
@@ -33,16 +38,11 @@ export default function ClusterLabels() {
   const size = useThree((state) => state.size)
   const invalidate = useThree((state) => state.invalidate)
 
+  // Zoomed out: one label per genre. Zoomed in: the finer continents.
   useFrame(() => {
     const zoom = atlasView.zoom
     const next: 'genre' | 'cluster' =
-      tierRef.current === 'genre'
-        ? zoom > 1.24
-          ? 'cluster'
-          : 'genre'
-        : zoom < 1.06
-          ? 'genre'
-          : 'cluster'
+      tierRef.current === 'genre' ? (zoom > 1.24 ? 'cluster' : 'genre') : zoom < 1.06 ? 'genre' : 'cluster'
     if (next !== tierRef.current) {
       tierRef.current = next
       setTier(next)
@@ -63,9 +63,7 @@ export default function ClusterLabels() {
         const normal = new THREE.Vector3()
         let count = 0
         for (const member of members) {
-          normal.add(
-            new THREE.Vector3(...member.centroid).normalize().multiplyScalar(member.count),
-          )
+          normal.add(new THREE.Vector3(...member.centroid).normalize().multiplyScalar(member.count))
           count += member.count
         }
         if (normal.lengthSq() === 0) continue
@@ -125,13 +123,22 @@ export default function ClusterLabels() {
 
       const width = element.offsetWidth || 90
       const height = element.offsetHeight || 16
-      const x = Math.min(Math.max(rawX, width / 2 + 8), size.width - width / 2 - 8)
+      // Below 1240px the right rail floats over the canvas: keep 140px clear
+      // of the sheet so labels never sit under the selected card.
+      const reserved = selectedId != null && size.width < 1240 ? 356 : 0
+      // Ease rim labels inward instead of dropping them at the silhouette.
+      const x = Math.min(
+        Math.max(rawX, width / 2 + 8),
+        Math.max(width / 2 + 8, size.width - reserved - width / 2 - 8),
+      )
+      // Keep continent names above the dock and hint strip.
       const y = Math.min(Math.max(rawY, height / 2 + 8), size.height - height / 2 - 152)
       const box = { x: x - width / 2, y: y - height / 2, w: width, h: height }
+      // Never let a label spill past the stage edge.
       if (
         box.x < 6 ||
         box.y < 6 ||
-        box.x + box.w > size.width - 6 ||
+        box.x + box.w > size.width - reserved - 6 ||
         box.y + box.h > size.height - 6
       ) {
         element.style.opacity = '0'
@@ -145,7 +152,8 @@ export default function ClusterLabels() {
           box.y < other.y + other.h + 6 &&
           box.y + box.h + 6 > other.y,
       )
-      const dimmed = active.current > 0 && !activeGenres.includes(label.genre) ? 0.24 : 1
+      const dimmed =
+        active.current > 0 && !activeGenres.includes(label.genre) ? 0.24 : 1
       const fade = Math.min(1, (facing - 0.25) * 4)
 
       if (collision) {
@@ -164,6 +172,7 @@ export default function ClusterLabels() {
       boxes.push(box)
       element.style.visibility = 'visible'
       element.style.opacity = `${fade * dimmed}`
+      // Actually move the label when it was eased inward from the rim.
       element.style.transform = `translate(${Math.round(x - rawX)}px, ${Math.round(y - rawY)}px)`
     }
   })

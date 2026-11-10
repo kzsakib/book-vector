@@ -12,7 +12,11 @@ const RING_BASIS = new THREE.Quaternion().setFromAxisAngle(
   -Math.PI / 2,
 )
 
-/** Two expanding halo rings in the book's colour plus a leader-line label. */
+/**
+ * Selected book marker: two expanding halo rings in the book's own colour plus
+ * a small Fraunces label on a leader line. Anchored to the dot's surface normal
+ * and hidden as soon as it turns past the limb.
+ */
 export default function SelectedPin() {
   const selectedId = useAtlas((state) => state.selectedId)
   const points = useAtlas((state) => state.points)
