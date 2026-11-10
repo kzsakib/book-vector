@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SPHERE_RADIUS } from '../data/format'
 import { genreTint } from '../lib/theme'
+import { atlasView } from '../lib/view'
 import { useAtlas } from '../store/atlas'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 
@@ -16,6 +17,7 @@ const VERTEX = /* glsl */ `
   uniform float uDpr;
   uniform float uHover;
   uniform float uReveal;
+  uniform float uZoom;
 
   varying vec3 vColor;
   varying float vState;
@@ -38,6 +40,9 @@ const VERTEX = /* glsl */ `
 
     // 3.5–9px at the framing distance, up to 12px at the closest clamp.
     float size = clamp(base * stateSize * uScale / max(0.001, -mv.z), 3.5, 12.0) * uDpr;
+    // Close in on a book and the irrelevant books step out of the way, so the
+    // scene never turns into a wall of overlapping dimmed pebbles.
+    size *= 1.0 - uZoom * step(2.5, aState);
     if (facing < -0.05) size = 0.0;
 
     gl_PointSize = size;
@@ -172,6 +177,7 @@ export default function BookDots() {
           uDpr: { value: 1 },
           uHover: { value: -1 },
           uReveal: { value: 0 },
+          uZoom: { value: 0 },
         },
         vertexShader: VERTEX,
         fragmentShader: FRAGMENT,
@@ -234,6 +240,13 @@ export default function BookDots() {
     const goalReveal = reduced ? 1 : Math.min(1, reveal.current + delta / 1.4)
     reveal.current = goalReveal
     material.uniforms.uReveal.value = goalReveal
+
+    const zoomFade = Math.min(1, Math.max(0, (atlasView.zoom - 1.6) / 0.9))
+    const zoomUniform = material.uniforms.uZoom.value as number
+    if (Math.abs(zoomUniform - zoomFade) > 0.01) {
+      material.uniforms.uZoom.value = zoomFade
+      invalidate()
+    }
 
     const goalHover = hoveredId != null ? hoveredId : -1
     const current = material.uniforms.uHover.value as number
