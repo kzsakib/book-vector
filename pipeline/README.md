@@ -101,3 +101,53 @@ automatically, for R2/S3 enable it on the bucket or pre-compress.
   islands.
 - Re-run stage 3 after changing the embedding model, the dataset, or any parameter —
   neighbour ids and cluster ids must stay in sync with the app's data.
+
+---
+
+## 50k build — `50k_build.py`
+
+The production scale target: 50,000 books, five neighbour lenses, chunked binaries
+and an eval report, in one run (~35 s, numpy only).
+
+```bash
+python3 pipeline/50k_build.py        # writes public/data-50k/ and pipeline/eval.md
+```
+
+**What is real here:** the data contract and every stage after it — candidate
+generation, the five-lens construction (best mix via RRF with a cross-genre floor
+and a same-subgenre cap, closest with series dedupe, across genres, mood, themes),
+bridge entropy, the six popularity levels, the 1,024-book neighbour chunks,
+256-book detail shards, hashed immutable filenames, `manifest.json`, and the eval.
+
+**What is synthetic:** the corpus and the embeddings. This environment has no GPU,
+no Open Library dumps and no Claude API key, so `build_corpus()` generates a
+deterministic 50k catalogue and hashed feature atoms stand in for BGE embeddings
+and Claude-rewritten genre-free premises. To run it for real, replace
+`build_corpus()` / `build_embeddings()` with the stages above (fetch → BGE-base →
+Claude premise rewrite); nothing downstream changes.
+
+### Output contract (`public/data-50k/`)
+
+| file | bytes |
+|---|---|
+| `positions.bin` | 4 B/book (uint16 lon, lat) |
+| `attrs.bin` | 14 B/book (genre, sub, cluster, era, pop, year, level, bridge, 5 mood) |
+| `tags.bin` | newline-separated tag vocabulary, 512 entries |
+| `strings.bin` + `strings.idx` | titles and authors, lazy-loaded |
+| `neighbors-<n>.bin` | 200 B/book: 5 lenses × 10 ids (u16), strengths (u8), flags (u8) |
+| `details-<n>.json` | 256 books per shard, lazy-loaded |
+| `levels.json` | reveal order (level, then popularity) |
+| `clusters.json` | continent id, name, colour, count |
+| `manifest.json` | logical name → SHA-1(6) hashed filename, plus byte sizes |
+
+Every file is written in book-id order; `levels.json` carries the draw order.
+
+### Measured (synthetic corpus, see `pipeline/eval.md`)
+
+positions 195 KB · attrs 684 KB · one neighbour chunk 200 KB · 49 chunks 9.5 MB ·
+strings 1.66 MB (lazy) · details 8.9 MB (lazy) · across-genres lens 100 %
+cross-genre · 0 series duplicates in closest and in the best mix · 61 % of map
+neighbours in the same genre.
+
+Boot payload is positions + attrs + levels + manifest ≈ 0.9 MB, which leaves the
+2 MB boot budget intact with strings and details deferred.
