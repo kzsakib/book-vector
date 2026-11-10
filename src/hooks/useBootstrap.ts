@@ -19,6 +19,9 @@ export function useBootstrap(): void {
         onPoints: (points, count, k) => {
           useAtlas.getState().setPoints(points, count)
           atlas.init(points.positions.slice(), points.neighbors.slice(), count, k, SPHERE_RADIUS)
+          // The globe is interactive as soon as the binaries land; metadata keeps
+          // streaming in behind it so 50k books never block first paint.
+          useAtlas.getState().setPhase('ready')
         },
         onMeta: (start, books) => {
           useAtlas.getState().setMetaChunk(start, books)

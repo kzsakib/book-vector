@@ -6,14 +6,16 @@
   "description": "A neumorphic 3D globe where every book is a raised clay bump on a pale sphere.",
   "scripts": {
     "data:sample": "node scripts/generate-sample.mjs",
-    "predev": "node scripts/generate-sample.mjs --if-missing && node scripts/fetch-fonts.mjs",
+    "data:atlas": "node scripts/build-data.mjs",
+    "predev": "node scripts/build-data.mjs --if-missing && node scripts/fetch-fonts.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/generate-sample.mjs && node scripts/fetch-fonts.mjs",
+    "prebuild": "node scripts/build-data.mjs && node scripts/fetch-fonts.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "fonts": "node scripts/fetch-fonts.mjs",
-    "pipeline:check": "python3 -m py_compile pipeline/*.py"
+    "pipeline:check": "python3 -m py_compile pipeline/*.py",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@react-three/drei": "^10.0.0",
@@ -26,6 +28,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/vite": "^4.1.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
