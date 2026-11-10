@@ -7,23 +7,20 @@ export const PALETTE = {
   accent: '#5B49D4',
   light: '#FFFFFF',
   dark: '#C5CCD7',
-  globe: '#DDE2EA',
+  globe: '#E6EAF0',
   limb: '#C9CFDA',
 } as const
 
-/**
- * Genre tints, in manifest genre order. Dots and tags only — never text.
- * Saturated enough to stay readable as 8px spheres on a pale surface.
- */
+/** Pastel genre tints, in manifest genre order. Dots and tags only — never text. */
 export const GENRE_TINTS = [
-  '#8E7CF0', // Fantasy
-  '#5FA8E8', // Science fiction
-  '#F07BA8', // Romance
-  '#F2B35A', // Mystery
-  '#55C79A', // Literary
-  '#E26A6A', // Horror
-  '#6F86E8', // History
-  '#B79CE6', // Poetry
+  '#A599E8', // Fantasy
+  '#8DBBE6', // Science fiction
+  '#E99BB8', // Romance
+  '#E6BC84', // Mystery
+  '#86CDB0', // Literary
+  '#D98F8F', // Horror
+  '#98A8E6', // History
+  '#C4B2E4', // Poetry
 ] as const
 
 export const BG_HEX = PALETTE.canvas
@@ -33,7 +30,7 @@ export function genreTint(index: number): string {
   return GENRE_TINTS[index % GENRE_TINTS.length]
 }
 
-/** Blend a tint toward white so secondary surfaces stay pastel. */
+/** Blend a tint toward white so domes stay pastel rather than saturated. */
 export function pastel(hex: string, amount = 0.85): string {
   const value = hex.replace('#', '')
   const r = parseInt(value.slice(0, 2), 16)

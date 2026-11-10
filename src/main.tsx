@@ -7,6 +7,9 @@ import './styles/atlas.css'
 if (import.meta.env.DEV) {
   // Handy for browser debugging and scripted checks during development.
   ;(window as unknown as { __atlas: typeof useAtlas }).__atlas = useAtlas
+  import('./lib/view').then(({ atlasView }) => {
+    ;(window as unknown as { __view: typeof atlasView }).__view = atlasView
+  })
 }
 
 // No StrictMode: its double-mount would stream the dataset and spin up the
