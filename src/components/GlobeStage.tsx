@@ -30,8 +30,8 @@ export default function GlobeStage() {
   }, [selectedId])
 
   const items: DockItem[] = [
-    { id: 'zoom-in', label: 'Zoom in', icon: <IconZoomIn />, active: true, onClick: () => zoomBy(1.15) },
-    { id: 'zoom-out', label: 'Zoom out', icon: <IconZoomOut />, active: true, onClick: () => zoomBy(1 / 1.15) },
+    { id: 'zoom-in', label: 'Zoom in', icon: <IconZoomIn />, active: true, onClick: () => zoomBy(1.22) },
+    { id: 'zoom-out', label: 'Zoom out', icon: <IconZoomOut />, active: true, onClick: () => zoomBy(1 / 1.22) },
     { id: 'reset', label: 'Reset view', icon: <IconReset />, active: true, onClick: resetView },
     {
       id: 'labels',
@@ -42,7 +42,7 @@ export default function GlobeStage() {
     },
     {
       id: 'links',
-      label: showLinks ? 'Hide lines' : 'Show lines',
+      label: showLinks ? 'Hide threads' : 'Show threads',
       icon: <IconThread />,
       active: showLinks,
       onClick: toggleLinks,
@@ -54,6 +54,7 @@ export default function GlobeStage() {
       ? `Selected ${meta?.t ?? `book ${selectedId}`}, ${nearby.length || 10} similar books`
       : 'No book selected'
 
+  /** Visually hidden listbox so keyboard and screen-reader users can pick a book. */
   const options = useMemo(() => {
     const ids = nearby.length ? nearby.slice(0, 10) : []
     return ids.map((id) => ({ id, title: allMeta[id]?.t ?? `Book #${id}` }))
@@ -102,6 +103,7 @@ export default function GlobeStage() {
         {announcement}
       </p>
 
+      {/* Keyboard equivalent of clicking a bump. */}
       <div className="sr-only">
         <p id="globe-list-label">
           Books near the selected book. Use the arrow keys, then Enter to open one.
