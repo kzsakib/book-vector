@@ -15,7 +15,7 @@ import SelectedPin from './SelectedPin'
 
 const FOV = 30
 const START_DIR = new THREE.Vector3(0.46, 0.34, 0.82).normalize()
-/** 0.44 * the shorter side of the canvas, per the layout brief. */
+/** 0.44 * the shorter side of the free rectangle, per the layout brief. */
 const FRAME_FRACTION = 0.44
 
 export default function GlobeScene() {
@@ -31,7 +31,7 @@ export default function GlobeScene() {
           toneMapping: THREE.ACESFilmicToneMapping,
           outputColorSpace: THREE.SRGBColorSpace,
         }}
-        camera={{ position: [3, 2.4, 7], fov: FOV, near: 0.1, far: 60 }}
+        camera={{ position: [3, 2.4, 7], fov: FOV, near: SPHERE_RADIUS * 0.02, far: SPHERE_RADIUS * 30 }}
         style={{ touchAction: 'none' }}
         role="img"
         aria-label="A pale clay globe covered in small pastel spheres. Each sphere is a book; similar books sit together. Use the filters, search, or the hidden book list to explore."
@@ -50,7 +50,17 @@ function Scene() {
   const [idle, setIdle] = useState(true)
   const invalidate = useThree((state) => state.invalidate)
   const camera = useThree((state) => state.camera)
+  const gl = useThree((state) => state.gl)
   const resume = useRef(0)
+
+  // A non-passive listener keeps wheel and ctrl+wheel (pinch) from bubbling to
+  // the page while OrbitControls still receives the same event.
+  useEffect(() => {
+    const element = gl.domElement
+    const stop = (event: WheelEvent) => event.preventDefault()
+    element.addEventListener('wheel', stop, { passive: false })
+    return () => element.removeEventListener('wheel', stop)
+  }, [gl])
 
   const rotating = autoRotate && idle && !reduced
 
@@ -65,11 +75,10 @@ function Scene() {
   useEffect(() => {
     registerViewCommands({
       zoom: (factor) => {
-        const base = (camera.userData.baseDistance as number | undefined) ?? 8
         const distance = THREE.MathUtils.clamp(
           camera.position.length() / factor,
-          base * 0.92,
-          base * 1.6,
+          SPHERE_RADIUS * 1.12,
+          SPHERE_RADIUS * 4.2,
         )
         camera.position.setLength(distance)
         camera.lookAt(0, 0, 0)
@@ -88,6 +97,7 @@ function Scene() {
 
   return (
     <>
+      {/* Soft studio: large key from the top-left, cool fill, faint rim. */}
       <ambientLight intensity={0.62} />
       <hemisphereLight args={['#FFFFFF', '#CBD3E0', 0.55]} />
       <directionalLight position={[-5, 5.5, 5.5]} intensity={2.15} color="#FFFAF4" />
@@ -139,8 +149,8 @@ function Scene() {
         dampingFactor={0.08}
         rotateSpeed={0.6}
         zoomSpeed={0.7}
-        minDistance={8}
-        maxDistance={16}
+        minDistance={SPHERE_RADIUS * 1.12}
+        maxDistance={SPHERE_RADIUS * 4.2}
         minPolarAngle={0.22}
         maxPolarAngle={Math.PI - 0.22}
         autoRotate={rotating}
@@ -236,7 +246,10 @@ function Graticule() {
   )
 }
 
-/** Lit clay sphere: baked light ramp, region tints, fresnel limb and lit rim. */
+/**
+ * Lit clay sphere: brighter base, region tints blended into the vertices, a
+ * fresnel limb and a thin bright rim on the lit edge.
+ */
 function Globe() {
   const clusters = useAtlas((state) => state.clusters)
 
@@ -257,6 +270,7 @@ function Globe() {
 
     for (let i = 0; i < position.count; i++) {
       vertex.set(position.getX(i), position.getY(i), position.getZ(i)).normalize()
+      // Diffuse ramp baked in, so the sphere reads as a volume from every angle.
       const light = THREE.MathUtils.clamp(vertex.dot(keyDir), -1, 1) * 0.5 + 0.5
       mixed.copy(shadeSide).lerp(lightSide, Math.pow(light, 0.9))
       mixed.lerp(base, 0.25)
@@ -305,7 +319,9 @@ function Globe() {
             '#include <dithering_fragment>',
             'vec3 atlasView = normalize(cameraPosition - vAtlasPos);',
             'float atlasFres = pow(1.0 - clamp(dot(normalize(vAtlasNormal), atlasView), 0.0, 1.0), 2.4);',
+            // Limb darkening toward the pale shade of the sphere.
             'gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.737, 0.769, 0.824), atlasFres * 0.6);',
+            // Thin bright rim just inside the limb, on the lit side only.
             'float atlasRim = smoothstep(0.72, 0.98, atlasFres) * smoothstep(-0.25, 0.55, dot(normalize(vAtlasNormal), vec3(-0.62, 0.52, 0.58)));',
             'gl_FragColor.rgb += vec3(0.16) * atlasRim;',
           ].join('\n'),
@@ -317,7 +333,10 @@ function Globe() {
   return <mesh geometry={geometry} material={material} renderOrder={0} />
 }
 
-/** Frames the sphere at 0.44 * the shorter canvas side and clamps zoom. */
+/**
+ * Frames the sphere at 0.44 * the free rectangle, then preserves that ratio on
+ * resize and clamps zoom so the whole sphere always fits.
+ */
 function Framing({ fov }: { fov: number }) {
   const size = useThree((state) => state.size)
   const camera = useThree((state) => state.camera)
@@ -329,6 +348,8 @@ function Framing({ fov }: { fov: number }) {
 
   useEffect(() => {
     if (!(camera instanceof THREE.PerspectiveCamera) || size.height <= 0) return
+    // The canvas already excludes the dock strip, so the sphere is framed in the
+    // space it actually occupies: radius = 0.44 * the shorter canvas side.
     const radiusPx = FRAME_FRACTION * Math.min(size.width, size.height)
     const fraction = (2 * radiusPx) / size.height
     const tanHalf = Math.tan((fov * Math.PI) / 360)
@@ -346,8 +367,9 @@ function Framing({ fov }: { fov: number }) {
     }
     camera.lookAt(0, 0, 0)
     if (controls) {
-      controls.minDistance = distance * 0.92
-      controls.maxDistance = distance * 1.6
+      // Closest zoom still frames most of the sphere; furthest shows the whole globe.
+      controls.minDistance = SPHERE_RADIUS * 1.12
+      controls.maxDistance = SPHERE_RADIUS * 4.2
       controls.update()
     }
     camera.updateProjectionMatrix()
@@ -365,7 +387,10 @@ function AutoRotateLoop({ active }: { active: boolean }) {
   return null
 }
 
-/** Great-circle fly-to over 900ms with power3.inOut easing. */
+/**
+ * Great-circle fly-to: slerp the direction and ease the radius over 900ms with
+ * power3.inOut. Reduced motion jumps straight there.
+ */
 function CameraRig() {
   const focus = useAtlas((state) => state.focus)
   const reduced = useReducedMotion()
@@ -386,8 +411,8 @@ function CameraRig() {
     const toDir = new THREE.Vector3(...focus.dir).normalize()
     const toRadius = THREE.MathUtils.clamp(
       baseDistance * focus.zoom,
-      baseDistance * 0.92,
-      baseDistance * 1.6,
+      SPHERE_RADIUS * 1.12,
+      SPHERE_RADIUS * 4.2,
     )
     if (reduced) {
       camera.position.copy(toDir).multiplyScalar(toRadius)
@@ -430,9 +455,19 @@ function PerfGuard() {
   const camera = useThree((state) => state.camera)
   const controls = useThree((state) => state.controls) as { update: () => void } | null
   const sample = useRef({ frames: 0, time: 0 })
+  const lastDistance = useRef(0)
+  const invalidate = useThree((state) => state.invalidate)
 
   useFrame((_, delta) => {
     const baseDistance = (camera.userData.baseDistance as number | undefined) ?? 0
+
+    // Demand rendering stops damping mid-flight; keep frames coming while the
+    // camera is still easing so zoom and rotation settle at their clamps.
+    const distance = camera.position.length()
+    if (Math.abs(distance - lastDistance.current) > 0.0004) {
+      lastDistance.current = distance
+      invalidate()
+    }
     if (baseDistance > 0) atlasView.zoom = baseDistance / Math.max(0.001, camera.position.length())
 
     if (delta > 0.25) {

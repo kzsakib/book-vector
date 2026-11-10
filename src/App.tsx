@@ -5,7 +5,10 @@ import Header from './components/Header'
 import StatsPanel from './components/StatsPanel'
 import Tooltip from './components/Tooltip'
 import { useBootstrap } from './hooks/useBootstrap'
+import { resetView, zoomBy } from './lib/view'
 import { useAtlas } from './store/atlas'
+
+const TYPING = /^(INPUT|TEXTAREA|SELECT)$/
 
 export default function App() {
   useBootstrap()
@@ -13,14 +16,34 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') useAtlas.getState().select(null)
+      const target = event.target as HTMLElement | null
+      if (target && (target.isContentEditable || TYPING.test(target.tagName))) return
+
+      if (event.key === 'Escape') {
+        useAtlas.getState().select(null)
+        return
+      }
+      if (event.key === '+' || event.key === '=') {
+        event.preventDefault()
+        zoomBy(1.25)
+        return
+      }
+      if (event.key === '-' || event.key === '_') {
+        event.preventDefault()
+        zoomBy(0.8)
+        return
+      }
+      if (event.key === '0') {
+        event.preventDefault()
+        resetView()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-compact={undefined}>
       <a className="skip-link" href="#atlas-globe">
         Skip to the globe
       </a>
