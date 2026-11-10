@@ -212,9 +212,19 @@ def main() -> None:
     cand = cand.astype(np.int64)
 
     rows = np.arange(N)[:, None]
-    cf = np.sum(full[cand] * full[:, None, :], axis=2)
-    cp = np.sum(premise[cand] * premise[:, None, :], axis=2)
-    ct = np.sum(themes[cand] * themes[:, None, :], axis=2)
+
+    def blocked_scores(query: np.ndarray, block: int = 2_000) -> np.ndarray:
+        """Cosine of every candidate against its book, in memory-safe blocks."""
+        out = np.zeros((N, PULL), np.float32)
+        for start in range(0, N, block):
+            stop = min(start + block, N)
+            out[start:stop] = np.einsum("npd,nd->np", query[cand[start:stop]],
+                                        query[start:stop])
+        return out
+
+    cf = blocked_scores(full)
+    cp = blocked_scores(premise)
+    ct = blocked_scores(themes)
     mood_i16 = mood.astype(np.int16)
     cm = -np.abs(mood_i16[cand] - mood_i16[:, None, :]).sum(2).astype(np.float32)
 
