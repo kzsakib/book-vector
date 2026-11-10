@@ -110,7 +110,7 @@ def build_corpus() -> dict:
     ids = np.arange(N)
     raw = 1.0 / (ids + 50) ** 1.05
     pop = (255 * raw / raw[0]).astype(np.uint8)
-    genre = (rng.zipf(2.4, N).clip(1, 8) - 1).astype(np.uint8)
+    genre = rng.choice(8, N, p=[0.18, 0.14, 0.16, 0.14, 0.12, 0.08, 0.10, 0.08]).astype(np.uint8)
     sub = ((genre * 7 + rng.integers(0, 7, N)) % 60).astype(np.uint8)
     year = np.clip(rng.normal(1985, 34, N), 1800, 2026).astype(np.uint16)
     # Six popularity levels by rank: 500 / 2k / 7k / 18k / 35k / the rest.
@@ -294,8 +294,14 @@ def main() -> None:
     pc = np.linalg.svd(lower, full_matrices=False)[2][:3]
     raw3 = premise @ pc.T
     p3 = unit(raw3 / np.maximum(raw3.std(0), 1e-9))
-    centres = unit(np.stack([[math.cos(2 * math.pi * g / 8), 0.2 * math.sin(g),
-                              math.sin(2 * math.pi * g / 8)] for g in range(8)]))
+    # Eight continent centres spread over the whole sphere (not one ring), so
+    # no region of the globe is left bare.
+    golden = math.pi * (3 - math.sqrt(5))
+    centres = unit(np.stack([
+        [math.cos(golden * g) * math.sqrt(max(0.0, 1 - (1 - 2 * (g + 0.5) / 8) ** 2)),
+         1 - 2 * (g + 0.5) / 8,
+         math.sin(golden * g) * math.sqrt(max(0.0, 1 - (1 - 2 * (g + 0.5) / 8) ** 2))]
+        for g in range(8)]))
     # Uniform sphere base + standardised premise projection + genre pull. The
     # uniform base guarantees even dot spacing; neighbour averaging is omitted
     # because it collapses 50k points into near-coincident clusters.
@@ -304,8 +310,19 @@ def main() -> None:
     gr = np.sqrt(np.maximum(0, 1 - gy * gy))
     gth = math.pi * (3 - math.sqrt(5)) * idx
     fib = np.stack([np.cos(gth) * gr, gy, np.sin(gth) * gr], 1).astype(np.float32)
-    jitter = rng.normal(0, 0.006, (N, 3)).astype(np.float32)
-    target = unit(0.55 * p3 + 0.30 * centres[genre] + 0.15 * fib + jitter)
+    # Uniform samples inside each genre's spherical cap: full coverage of the
+    # sphere with coherent continents (no bare patches, no cross-genre smear).
+    cap_angle = math.radians(38)
+    centre_rows = centres[genre]
+    ref = np.array([0.0, 1.0, 0.0], np.float32)
+    tangent1 = unit(np.cross(centre_rows, ref) + np.array([0.0, 0.0, 1e-4], np.float32))
+    tangent2 = np.cross(centre_rows, tangent1)
+    phi = rng.uniform(0, 2 * math.pi, N)
+    cos_t = 1 - rng.uniform(0, 1, N) * (1 - math.cos(cap_angle))
+    sin_t = np.sqrt(np.maximum(0, 1 - cos_t**2))
+    cap = (centre_rows * cos_t[:, None]
+           + (tangent1 * np.cos(phi)[:, None] + tangent2 * np.sin(phi)[:, None]) * sin_t[:, None])
+    target = unit(cap + 0.10 * p3)
     lon = ((np.arctan2(target[:, 2], target[:, 0]) / (2 * math.pi)) % 1.0 * 65535).astype(np.uint16)
     lat = ((np.arcsin(np.clip(target[:, 1], -1, 1)) / math.pi + 0.5) * 65535).astype(np.uint16)
 
@@ -406,6 +423,61 @@ def main() -> None:
         "note": "synthetic corpus: replace pipeline build_corpus with Open Library + BGE + Claude",
     }, separators=(",", ":")))
 
+    # ---- app dataset (public/data, the contract src/data/load.ts reads) ----
+    APP = ROOT / "public" / "data"
+    APP.mkdir(parents=True, exist_ok=True)
+    for stale in APP.iterdir():
+        if stale.is_file():
+            stale.unlink()
+
+    app_k = K
+    (APP / "positions.bin").write_bytes(
+        np.round((target + 1) * 0.5 * 65535).clip(0, 65535).astype("<u2").tobytes())
+
+    app_attrs = np.zeros((N, 4), np.uint8)
+    app_attrs[:, 0] = genre
+    app_attrs[:, 1] = c["pop"]
+    app_attrs[:, 2:4] = c["year"].view(np.uint8).reshape(N, 2)
+    (APP / "attrs.bin").write_bytes(app_attrs.tobytes())
+    (APP / "neighbors.bin").write_bytes(mix.astype("<u4").tobytes())
+
+    app_chunk = 500
+    for start in range(0, N, app_chunk):
+        stop = min(start + app_chunk, N)
+        books = [{"t": c["titles"][i], "a": c["authors"][i], "y": int(c["year"][i]),
+                  "g": int(genre[i]), "p": int(pop[i]),
+                  "s": [c["tag_vocab"][t] for t in c["tags"][i] if t >= 0][:4]}
+                 for i in range(start, stop)]
+        (APP / f"meta-{start // app_chunk}.json").write_text(
+            json.dumps(books, separators=(",", ":")))
+
+    app_clusters = []
+    for g in range(8):
+        members = np.flatnonzero(genre == g)
+        centroid = unit(target[members].mean(0))
+        tag_counts = np.bincount(c["tags"][members].ravel()[c["tags"][members].ravel() >= 0],
+                                 minlength=512)
+        terms = [c["tag_vocab"][t] for t in np.argsort(-tag_counts)[:3]]
+        app_clusters.append({
+            "id": g, "name": GENRES[g][0], "genre": g, "color": GENRES[g][1],
+            "count": int(len(members)), "terms": terms,
+            "centroid": [round(float(v), 4) for v in centroid],
+        })
+    (APP / "clusters.json").write_text(json.dumps(
+        {"generatedAt": "2026-11-10", "radius": 2, "clusters": app_clusters}))
+
+    genre_ids = ["fantasy", "scifi", "romance", "mystery", "literary", "horror",
+                 "history", "poetry"]
+    (APP / "manifest.json").write_text(json.dumps({
+        "version": 2,
+        "generatedAt": "2026-11-10",
+        "source": "synthetic 50k corpus (pipeline/50k_build.py)",
+        "count": N, "chunkSize": app_chunk, "chunks": (N + app_chunk - 1) // app_chunk,
+        "neighbors": app_k, "sphereRadius": 2,
+        "genres": [{"id": genre_ids[g], "name": GENRES[g][0], "color": GENRES[g][1]}
+                   for g in range(8)],
+    }, separators=(",", ":")))
+
     # ---- eval -------------------------------------------------------------
     sample = np.random.default_rng(7).choice(N, 600, replace=False)
     across_rate = float(np.mean(genre[across_ids[sample]] != genre[sample][:, None]))
@@ -439,7 +511,7 @@ def main() -> None:
         ("best-mix cross-genre share", f"{mix_cross * 100:.1f}%"),
         ("books with a series duplicate in closest", f"{dupes_closest} / 600"),
         ("books with a series duplicate in best mix", f"{dupes} / 600"),
-        ("map fidelity recall@10 (vs premise lens)", f"{map_recall * 100:.1f}%"),
+        ("premise-neighbour recall@10 (3-D layout, no UMAP)", f"{map_recall * 100:.1f}%"),
         ("map neighbours in the same genre", f"{geo_genre * 100:.1f}%"),
         ("map nearest-neighbour distance", f"{geo_nn:.4f}"),
         ("level offsets", str(np.searchsorted(c["level"][order], np.arange(6), side="left").tolist())),
